@@ -93,7 +93,7 @@ namespace Payments.PayPalStandard
         /// </summary>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
         /// <returns>Created query parameters</returns>
-        private async Task<IDictionary<string, string>> CreateQueryParameters(Order order)
+        private async Task<IDictionary<string, string>> CreateQueryParameters(Order order, string convertedLocale = null, string convertedCurrencyCode = null)
         {
             //get store location
             var storeLocation = _workContext.CurrentHost.Url.TrimEnd('/');
@@ -127,7 +127,8 @@ namespace Payments.PayPalStandard
                 //set return method to "2" (the customer redirected to the return URL by using the POST method, and all payment variables are included)
                 ["rm"] = "2",
 
-                ["currency_code"] = order.CustomerCurrencyCode,
+                ["currency_code"] = convertedCurrencyCode != null ? convertedCurrencyCode : order.CustomerCurrencyCode,
+                ["locale"] = convertedLocale != null ? convertedLocale : "en_US",
 
                 //order identifier
                 ["invoice"] = order.OrderNumber.ToString(),
@@ -159,7 +160,7 @@ namespace Payments.PayPalStandard
         /// </summary>
         /// <param name="parameters">Query parameters</param>
         /// <param name="postProcessPaymentRequest">Payment info required for an order processing</param>
-        private async Task AddItemsParameters(IDictionary<string, string> parameters, Order order)
+        private async Task AddItemsParameters(IDictionary<string, string> parameters, Order order, ICollection<OrderItem> convertedOrderItems)
         {
             //upload order items
             parameters.Add("cmd", "_cart");
@@ -170,7 +171,7 @@ namespace Payments.PayPalStandard
             var itemCount = 1;
 
             //add shopping cart items
-            foreach (var item in order.OrderItems)
+            foreach (var item in convertedOrderItems)
             {
                 var product = await _productService.GetProductById(item.ProductId);
 
@@ -317,15 +318,71 @@ namespace Payments.PayPalStandard
         public async Task PostRedirectPayment(PaymentTransaction paymentTransaction)
         {
             var order = await _orderService.GetOrderByGuid(paymentTransaction.OrderGuid);
+
+            //
+            //As of 2022-Dec, Paypal does not support paying in VND, so we need to convert it to USD
+            //
+            string convertedLocale = null;
+            var convertedCurrencyCode = order.CustomerCurrencyCode;
+            var convertedOrderItems = order.OrderItems;
+            //var convertedOrderTaxes = order.OrderTaxes;
+            var convertedOrder = order;
+            if (order.CustomerCurrencyCode.ToLower() == "vnd")
+            {
+                //Auto-set Locale to Vietnamese if currency is VND
+                convertedLocale = "en_VN";
+
+                convertedCurrencyCode = "USD";
+
+                //TODO: Do not hard-code CurrencyRate here
+                var usd2vndRate = (order.PrimaryCurrencyCode.ToLower() == "usd") ? order.CurrencyRate : 25000;
+
+                convertedOrderItems = new List<OrderItem>();
+                foreach (var item in order.OrderItems)
+                {
+                    item.CancelAmount = item.CancelAmount / usd2vndRate;
+                    item.DiscountAmountExclTax = item.DiscountAmountExclTax / usd2vndRate;
+                    item.DiscountAmountInclTax = item.DiscountAmountInclTax / usd2vndRate;
+                    item.PriceExclTax = item.PriceExclTax / usd2vndRate;
+                    item.PriceInclTax = item.PriceInclTax / usd2vndRate;
+                    item.UnitPriceExclTax = item.UnitPriceExclTax / usd2vndRate;
+                    item.UnitPriceInclTax = item.UnitPriceInclTax / usd2vndRate;
+                    item.UnitPriceWithoutDiscExclTax = item.UnitPriceWithoutDiscExclTax / usd2vndRate;
+                    item.UnitPriceWithoutDiscInclTax = item.UnitPriceWithoutDiscInclTax / usd2vndRate;
+                    convertedOrderItems.Add(item);
+                }
+
+                //convertedOrderTaxes = new List<OrderTax>();
+                //foreach (var item in order.OrderTaxes)
+                //{
+                //    item.Amount = item.Amount / usd2vndRate;
+                //    convertedOrderTaxes.Add(item);
+                //}
+
+                convertedOrder.OrderTotal = convertedOrder.OrderTotal / usd2vndRate;
+                convertedOrder.OrderTax = convertedOrder.OrderTax / usd2vndRate;
+                convertedOrder.OrderDiscount = convertedOrder.OrderDiscount / usd2vndRate;
+                convertedOrder.OrderShippingExclTax = convertedOrder.OrderShippingExclTax / usd2vndRate;
+                convertedOrder.OrderShippingInclTax = convertedOrder.OrderShippingInclTax / usd2vndRate;
+                convertedOrder.OrderSubTotalDiscountExclTax = convertedOrder.OrderSubTotalDiscountExclTax / usd2vndRate;
+                convertedOrder.OrderSubTotalDiscountInclTax = convertedOrder.OrderSubTotalDiscountInclTax / usd2vndRate;
+                convertedOrder.OrderSubtotalExclTax = convertedOrder.OrderSubtotalExclTax / usd2vndRate;
+                convertedOrder.OrderSubtotalInclTax = convertedOrder.OrderSubtotalInclTax / usd2vndRate;
+                convertedOrder.PaymentMethodAdditionalFeeExclTax = convertedOrder.PaymentMethodAdditionalFeeExclTax / usd2vndRate;
+                convertedOrder.PaymentMethodAdditionalFeeInclTax = convertedOrder.PaymentMethodAdditionalFeeInclTax / usd2vndRate;
+                //TODO: Update values for convertedOrder such as PaidAmount, RefundedAmount, etc. (probably don't need as we don't use them when placing order)?
+            }
+
+
             //create common query parameters for the request
-            var queryParameters = await CreateQueryParameters(order);
+            var queryParameters = await CreateQueryParameters(order, convertedLocale, convertedCurrencyCode);
 
             //whether to include order items in a transaction
             if (_paypalStandardPaymentSettings.PassProductNamesAndTotals)
             {
                 //add order items query parameters to the request
                 var parameters = new Dictionary<string, string>(queryParameters);
-                await AddItemsParameters(parameters, order);
+                await AddItemsParameters(parameters, convertedOrder, convertedOrderItems);
 
                 //remove null values from parameters
                 parameters = parameters.Where(parameter => !string.IsNullOrEmpty(parameter.Value))
@@ -341,7 +398,7 @@ namespace Payments.PayPalStandard
             }
 
             //or add only an order total query parameters to the request
-            await AddOrderTotalParameters(queryParameters, order);
+            await AddOrderTotalParameters(queryParameters, convertedOrder);
 
             //remove null values from parameters
             queryParameters = queryParameters.Where(parameter => !string.IsNullOrEmpty(parameter.Value))

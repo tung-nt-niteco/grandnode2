@@ -1,5 +1,5 @@
-﻿using Grand.Business.Core.Interfaces.Catalog.Products;
-using Grand.Business.Core.Extensions;
+﻿using Grand.Business.Core.Extensions;
+using Grand.Business.Core.Interfaces.Catalog.Products;
 using Grand.Domain.Catalog;
 using Grand.Infrastructure.Extensions;
 using Grand.Infrastructure.Models;
@@ -9,7 +9,7 @@ using Microsoft.AspNetCore.Mvc.Rendering;
 
 namespace Grand.Web.Models.Catalog
 {
-    public partial class CatalogPagingFilteringModel : BasePageableModel
+    public class CatalogPagingFilteringModel : BasePageableModel
     {
         #region Constructors
 
@@ -19,6 +19,7 @@ namespace Grand.Web.Models.Catalog
             AvailableViewModes = new List<SelectListItem>();
             PageSizeOptions = new List<SelectListItem>();
             SpecificationFilter = new SpecificationFilterModel();
+            RatingOptions = new List<SelectListItem>();
         }
 
         #endregion
@@ -32,7 +33,6 @@ namespace Grand.Web.Models.Catalog
 
         public bool AllowProductSorting { get; set; }
         public IList<SelectListItem> AvailableSortOptions { get; set; }
-        public string AvailableSortOption { get; set; }
 
         public bool AllowProductViewModeChanging { get; set; }
         public IList<SelectListItem> AvailableViewModes { get; set; }
@@ -40,15 +40,23 @@ namespace Grand.Web.Models.Catalog
         public bool AllowCustomersToSelectPageSize { get; set; }
         public IList<SelectListItem> PageSizeOptions { get; set; }
 
-        public string PageSizeOption { get; set; }
-
         /// <summary>
         /// Order by
         /// </summary>
         public int? OrderBy { get; set; }
 
         /// <summary>
-        /// Product sorting
+        /// Rating
+        /// </summary>
+        public double? Rating { get; set; }
+        
+        /// <summary>
+        /// Rating list options
+        /// </summary>
+        public IList<SelectListItem> RatingOptions { get; set; }
+        
+        /// <summary>
+        /// View mode
         /// </summary>
         public string ViewMode { get; set; }
 
@@ -57,7 +65,7 @@ namespace Grand.Web.Models.Catalog
 
         #region Nested classes
 
-        public partial class SpecificationFilterModel : BaseModel
+        public class SpecificationFilterModel : BaseModel
         {
             #region Ctor
 
@@ -76,7 +84,7 @@ namespace Grand.Web.Models.Catalog
                 //comma separated list of parameters to exclude
                 const string excludedQueryStringParams = "pagenumber";
                 var excludedQueryStringParamsSplitted = excludedQueryStringParams.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (string exclude in excludedQueryStringParamsSplitted)
+                foreach (var exclude in excludedQueryStringParamsSplitted)
                     url = CommonExtensions.ModifyQueryString(url, exclude, null);
                 return url;
             }
@@ -86,7 +94,7 @@ namespace Grand.Web.Models.Catalog
                 if (optionIds == null)
                     return "";
 
-                string result = string.Join(",", optionIds);
+                var result = string.Join(",", optionIds);
                 return result;
             }
 
@@ -102,20 +110,16 @@ namespace Grand.Web.Models.Catalog
                 foreach (var item in query)
                 {
                     var spec = await specificationAttributeService.GetSpecificationAttributeBySeName(item.Key);
-                    if (spec != null)
+                    if (spec == null) continue;
+                    foreach (var value in item.Value)
                     {
-                        foreach (var value in item.Value)
+                        foreach (var option in value.Split(","))
                         {
-                            foreach (var option in value.Split(","))
-                            {
-                                var opt = spec.SpecificationAttributeOptions.FirstOrDefault(x => x.SeName == option.ToLowerInvariant());
-                                if (opt != null)
-                                {
-                                    if (!result.Contains(opt.Id))
-                                        result.Add(opt.Id);
-                                }
+                            var opt = spec.SpecificationAttributeOptions.FirstOrDefault(x => x.SeName == option.ToLowerInvariant());
+                            if (opt == null) continue;
+                            if (!result.Contains(opt.Id))
+                                result.Add(opt.Id);
 
-                            }
                         }
                     }
                 }
@@ -124,7 +128,7 @@ namespace Grand.Web.Models.Catalog
             }
 
             public virtual async Task PrepareSpecsFilters(IList<string> alreadyFilteredSpecOptionIds,
-                IList<string> filterableSpecificationAttributeOptionIds,
+                IEnumerable<string> filterableSpecificationAttributeOptionIds,
                 ISpecificationAttributeService specificationAttributeService,
                 string url, string langId)
             {
@@ -143,9 +147,9 @@ namespace Grand.Web.Models.Catalog
                             SpecificationAttributeDisplayOrder = sa.DisplayOrder,
                             SpecificationAttributeOptionId = sao,
                             SpecificationAttributeOptionName = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao).GetTranslation(x => x.Name, langId),
-                            SpecificationAttributeOptionSeName = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao).SeName,
-                            SpecificationAttributeOptionDisplayOrder = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao).DisplayOrder,
-                            SpecificationAttributeOptionColorRgb = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao).ColorSquaresRgb,
+                            SpecificationAttributeOptionSeName = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao)!.SeName,
+                            SpecificationAttributeOptionDisplayOrder = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao)!.DisplayOrder,
+                            SpecificationAttributeOptionColorRgb = sa.SpecificationAttributeOptions.FirstOrDefault(x => x.Id == sao)!.ColorSquaresRgb
                         });
                     }
                 }
@@ -191,11 +195,11 @@ namespace Grand.Web.Models.Catalog
                 NotFilteredItems = allFilters.Except(alreadyFilteredOptions).Select(x =>
                 {
                     //filter URL
-                    var alreadyFiltered = alreadyFilteredOptions.Where(y => y.SpecificationAttributeId == x.SpecificationAttributeId).Select(x => x.SpecificationAttributeOptionSeName)
+                    var alreadyFiltered = alreadyFilteredOptions.Where(y => y.SpecificationAttributeId == x.SpecificationAttributeId).Select(s => s.SpecificationAttributeOptionSeName)
                     .Concat(new List<string> { x.SpecificationAttributeOptionSeName });
 
                     var filterUrl = CommonExtensions.ModifyQueryString(url, x.SpecificationAttributeSeName, GenerateFilteredSpecQueryParam(alreadyFiltered.ToList()));
-                    return new SpecificationFilterItem() {
+                    return new SpecificationFilterItem {
                         SpecificationAttributeName = x.SpecificationAttributeName,
                         SpecificationAttributeSeName = x.SpecificationAttributeSeName,
                         SpecificationAttributeOptionName = x.SpecificationAttributeOptionName,
@@ -217,7 +221,7 @@ namespace Grand.Web.Models.Catalog
             #endregion
         }
 
-        public partial class SpecificationFilterItem : BaseModel
+        public class SpecificationFilterItem : BaseModel
         {
             public string SpecificationAttributeName { get; set; }
             public string SpecificationAttributeSeName { get; set; }

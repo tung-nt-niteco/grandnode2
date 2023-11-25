@@ -6,7 +6,7 @@ using Grand.Infrastructure;
 using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Endpoints;
 using Grand.Infrastructure.Plugins;
-using Grand.Infrastructure.TypeSearchers;
+using Grand.Infrastructure.TypeSearch;
 using Grand.SharedKernel.Extensions;
 using Grand.Web.Common.Middleware;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -21,7 +21,6 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Net.Http.Headers;
-using WebMarkupMin.AspNetCore6;
 
 namespace Grand.Web.Common.Infrastructure
 {
@@ -61,8 +60,8 @@ namespace Grand.Web.Common.Infrastructure
                         return;
 
                     string authHeader = context.Request.Headers["Authorization"];
-                    var apirequest = authHeader != null && authHeader.Split(' ')[0] == "Bearer";
-                    if (apirequest)
+                    var apiRequest = authHeader != null && authHeader.Split(' ')[0] == "Bearer";
+                    if (apiRequest)
                     {
                         await context.Response.WriteAsync(exception.Message);
                         return;
@@ -77,9 +76,9 @@ namespace Grand.Web.Common.Infrastructure
                             var workContext = context.RequestServices.GetRequiredService<IWorkContext>();
                             _ = logger.InsertLog(Domain.Logging.LogLevel.Error, exception.Message, exception.ToString(),
                             customer: workContext.CurrentCustomer,
-                            ipAddress: context.Connection?.RemoteIpAddress?.ToString(),
-                            pageurl: context.Request?.GetDisplayUrl(),
-                            referrerUrl: context.Request?.GetTypedHeaders().Referer?.ToString());
+                            ipAddress: context.Connection.RemoteIpAddress?.ToString(),
+                            pageUrl: context.Request.GetDisplayUrl(),
+                            referrerUrl: context.Request.GetTypedHeaders().Referer?.ToString());
                             //log error
                             _ = logger.Error(exception.Message, exception, workContext.CurrentCustomer);
                         }
@@ -105,14 +104,14 @@ namespace Grand.Web.Common.Infrastructure
                 if (context.HttpContext.Response.StatusCode == 404)
                 {
                     string authHeader = context.HttpContext.Request.Headers[HeaderNames.Authorization];
-                    var apirequest = authHeader != null && authHeader.Split(' ')[0] == JwtBearerDefaults.AuthenticationScheme;
+                    var apiRequest = authHeader != null && authHeader.Split(' ')[0] == JwtBearerDefaults.AuthenticationScheme;
 
                     var contentTypeProvider = new FileExtensionContentTypeProvider();
-                    var staticResource = contentTypeProvider.TryGetContentType(context.HttpContext.Request.Path, out string _);
+                    var staticResource = contentTypeProvider.TryGetContentType(context.HttpContext.Request.Path, out _);
 
-                    if (!apirequest && !staticResource)
+                    if (!apiRequest && !staticResource)
                     {
-                        var location = "/page-not-found";
+                        const string location = "/page-not-found";
                         context.HttpContext.Response.Redirect(context.HttpContext.Request.PathBase + location);
                     }
                     var commonSettings = context.HttpContext.RequestServices.GetRequiredService<CommonSettings>();
@@ -122,11 +121,11 @@ namespace Grand.Web.Common.Infrastructure
                         //get current customer
                         var workContext = context.HttpContext.RequestServices.GetRequiredService<IWorkContext>();
                         _ = logger.InsertLog(Domain.Logging.LogLevel.Error,
-                            $"Error 404. The requested page ({context.HttpContext.Request?.GetDisplayUrl()}) was not found",
+                            $"Error 404. The requested page ({context.HttpContext.Request.GetDisplayUrl()}) was not found",
                             customer: workContext.CurrentCustomer,
-                            ipAddress: context.HttpContext?.Connection?.RemoteIpAddress?.ToString(),
-                            pageurl: context.HttpContext?.Request?.GetDisplayUrl(),
-                            referrerUrl: context.HttpContext?.Request?.GetTypedHeaders().Referer?.ToString());
+                            ipAddress: context.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                            pageUrl: context.HttpContext.Request.GetDisplayUrl(),
+                            referrerUrl: context.HttpContext.Request.GetTypedHeaders().Referer?.ToString());
                     }
                 }
                 await Task.CompletedTask;
@@ -142,27 +141,25 @@ namespace Grand.Web.Common.Infrastructure
             application.UseStatusCodePages(context =>
             {
                 //handle 400 (Bad request)
-                if (context.HttpContext.Response.StatusCode == StatusCodes.Status400BadRequest)
-                {
-                    string authHeader = context.HttpContext.Request.Headers[HeaderNames.Authorization];
-                    var apirequest = authHeader != null && authHeader.Split(' ')[0] == JwtBearerDefaults.AuthenticationScheme;
+                if (context.HttpContext.Response.StatusCode != StatusCodes.Status400BadRequest)
+                    return Task.CompletedTask;
+                
+                string authHeader = context.HttpContext.Request.Headers[HeaderNames.Authorization];
+                var apiRequest = authHeader != null && authHeader.Split(' ')[0] == JwtBearerDefaults.AuthenticationScheme;
 
-                    if (!apirequest)
-                    {
-                        var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger>();
-                        var workContext = context.HttpContext.RequestServices.GetRequiredService<IWorkContext>();
-                        _ = logger.InsertLog(Domain.Logging.LogLevel.Error, "Error 400. Bad request", null, customer: workContext.CurrentCustomer,
-                            ipAddress: context.HttpContext?.Connection?.RemoteIpAddress?.ToString(),
-                            pageurl: context.HttpContext?.Request?.GetDisplayUrl(),
-                            referrerUrl: context.HttpContext?.Request?.GetTypedHeaders().Referer?.ToString());
-                    }
-                }
+                if (apiRequest) return Task.CompletedTask;
+                var logger = context.HttpContext.RequestServices.GetRequiredService<ILogger>();
+                var workContext = context.HttpContext.RequestServices.GetRequiredService<IWorkContext>();
+                _ = logger.InsertLog(Domain.Logging.LogLevel.Error, "Error 400. Bad request", null, customer: workContext.CurrentCustomer,
+                    ipAddress: context.HttpContext.Connection.RemoteIpAddress?.ToString(),
+                    pageUrl: context.HttpContext.Request.GetDisplayUrl(),
+                    referrerUrl: context.HttpContext.Request.GetTypedHeaders().Referer?.ToString());
                 return Task.CompletedTask;
             });
         }
 
         /// <summary>
-        /// Congifure authentication
+        /// Configure authentication
         /// </summary>
         /// <param name="application">Builder for configuring an application's request pipeline</param>
         public static void UseGrandAuthentication(this IApplicationBuilder application)
@@ -182,9 +179,9 @@ namespace Grand.Web.Common.Infrastructure
                 var typeSearcher = endpoints.ServiceProvider.GetRequiredService<ITypeSearcher>();
                 var endpointProviders = typeSearcher.ClassesOfType<IEndpointProvider>();
                 var instances = endpointProviders
-                    .Where(endpointProvider => PluginExtensions.OnlyInstalledPlugins(endpointProvider))
+                    .Where(PluginExtensions.OnlyInstalledPlugins)
                     .Select(endpointProvider => (IEndpointProvider)Activator.CreateInstance(endpointProvider))
-                    .OrderByDescending(endpointProvider => endpointProvider.Priority);
+                    .OrderByDescending(endpointProvider => endpointProvider!.Priority);
 
                 foreach (var endpointProvider in instances)
                     endpointProvider.RegisterEndpoint(endpoints);
@@ -204,6 +201,7 @@ namespace Grand.Web.Common.Infrastructure
         /// Configure static file serving
         /// </summary>
         /// <param name="application">Builder for configuring an application's request pipeline</param>
+        /// <param name="appConfig">AppConfig</param>
         public static void UseGrandStaticFiles(this IApplicationBuilder application, AppConfig appConfig)
         {
             //static files
@@ -273,7 +271,7 @@ namespace Grand.Web.Common.Infrastructure
 
             var serviceProvider = application.ApplicationServices;
             var logger = serviceProvider.GetRequiredService<ILogger>();
-            _ = logger.Information("Application started", null, null);
+            _ = logger.Information("Application started");
         }
 
         /// <summary>
@@ -306,7 +304,7 @@ namespace Grand.Web.Common.Infrastructure
                 .AddXssProtectionBlock()
                 .AddFrameOptionsDeny()
                 .AddContentTypeOptionsNoSniff()
-                .AddStrictTransportSecurityMaxAgeIncludeSubDomains(maxAgeInSeconds: 60 * 60 * 24 * 365) // maxage = one year in seconds
+                .AddStrictTransportSecurityMaxAgeIncludeSubDomains(maxAgeInSeconds: 60 * 60 * 24 * 365) // max-age = one year in seconds
                 .AddReferrerPolicyStrictOriginWhenCrossOrigin()
                 .AddContentSecurityPolicy(builder =>
                 {
@@ -342,16 +340,7 @@ namespace Grand.Web.Common.Infrastructure
 
             application.UseSecurityHeaders(policyCollection);
         }
-
-        /// <summary>
-        /// Use WebMarkupMin for your application.
-        /// </summary>
-        /// <param name="application">Builder for configuring an application's request pipeline</param>
-        public static void UseHtmlMinification(this IApplicationBuilder application)
-        {
-            application.UseWebMarkupMin();
-        }
-
+        
         /// <summary>
         /// Configure middleware checking whether database is installed
         /// </summary>
@@ -362,7 +351,7 @@ namespace Grand.Web.Common.Infrastructure
         }
 
         /// <summary>
-        /// Configures wethere use or not the Header X-Powered-By and its value.
+        /// Configures whether use or not the Header X-Powered-By and its value.
         /// </summary>
         /// <param name="application">Builder for configuring an application's request pipeline</param>
         public static void UsePoweredBy(this IApplicationBuilder application)

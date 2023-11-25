@@ -3,7 +3,7 @@ using Grand.Infrastructure.Models;
 
 namespace Grand.Web.Admin.Models.Common
 {
-    public partial class SystemInfoModel : BaseModel
+    public class SystemInfoModel : BaseModel
     {
         public SystemInfoModel()
         {
@@ -18,9 +18,14 @@ namespace Grand.Web.Admin.Models.Common
         [GrandResourceDisplayName("Admin.System.SystemInfo.MachineName")]
         public string MachineName { get; set; }
 
-
         [GrandResourceDisplayName("Admin.System.SystemInfo.GrandVersion")]
         public string GrandVersion { get; set; }
+        
+        [GrandResourceDisplayName("Admin.System.SystemInfo.GitBranch")]
+        public string GitBranch { get; set; }
+
+        [GrandResourceDisplayName("Admin.System.SystemInfo.GitCommit")]
+        public string GitCommit { get; set; }
 
         [GrandResourceDisplayName("Admin.System.SystemInfo.OperatingSystem")]
         public string OperatingSystem { get; set; }
@@ -60,19 +65,19 @@ namespace Grand.Web.Admin.Models.Common
 
         public IList<SystemWarningModel> SystemWarnings { get; set; }
 
-        public partial class ServerVariableModel : BaseModel
+        public class ServerVariableModel : BaseModel
         {
             public string Name { get; set; }
             public string Value { get; set; }
         }
 
-        public partial class LoadedAssembly : BaseModel
+        public class LoadedAssembly : BaseModel
         {
             public string FullName { get; set; }
             public string Location { get; set; }
         }
 
-        public partial class SystemWarningModel : BaseModel
+        public class SystemWarningModel : BaseModel
         {
             public SystemWarningLevel Level { get; set; }
 

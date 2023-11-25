@@ -4,7 +4,7 @@ using Grand.Web.Models.Media;
 
 namespace Grand.Web.Models.Orders
 {
-    public partial class OrderDetailsModel : BaseEntityModel
+    public class OrderDetailsModel : BaseEntityModel
     {
         public OrderDetailsModel()
         {
@@ -19,8 +19,6 @@ namespace Grand.Web.Models.Orders
             PickupAddress = new AddressModel();
             CustomValues = new Dictionary<string, object>();
         }
-
-        public bool PrintMode { get; set; }
         public bool PdfInvoiceDisabled { get; set; }
 
         public bool UserCanCancelUnpaidOrder { get; set; }
@@ -51,7 +49,7 @@ namespace Grand.Web.Models.Orders
         public string PaymentMethodStatus { get; set; }
         public bool CanRePostProcessPayment { get; set; }
         public Dictionary<string, object> CustomValues { get; set; }
-
+        public bool OrderIncludingTax { get; set; }
         public string OrderSubtotal { get; set; }
         public string OrderSubTotalDiscount { get; set; }
         public string OrderShipping { get; set; }
@@ -80,7 +78,7 @@ namespace Grand.Web.Models.Orders
 
         #region Nested Classes
 
-        public partial class OrderItemModel : BaseEntityModel
+        public class OrderItemModel : BaseEntityModel
         {
             public OrderItemModel()
             {
@@ -93,6 +91,7 @@ namespace Grand.Web.Models.Orders
             public string ProductSeName { get; set; }
             public PictureModel Picture { get; set; }
             public string UnitPrice { get; set; }
+            public bool UnitPriceIncludingTax { get; set; }
             public double UnitPriceValue { get; set; }
             public string UnitPriceWithoutDiscount { get; set; }
             public double UnitPriceWithoutDiscountValue { get; set; }
@@ -107,19 +106,19 @@ namespace Grand.Web.Models.Orders
             public string LicenseId { get; set; }
         }
 
-        public partial class TaxRate : BaseModel
+        public class TaxRate : BaseModel
         {
             public string Rate { get; set; }
             public string Value { get; set; }
         }
 
-        public partial class GiftVoucher : BaseModel
+        public class GiftVoucher : BaseModel
         {
             public string CouponCode { get; set; }
             public string Amount { get; set; }
         }
 
-        public partial class OrderNote : BaseEntityModel
+        public class OrderNote : BaseEntityModel
         {
             public bool HasDownload { get; set; }
             public string Note { get; set; }
@@ -127,7 +126,7 @@ namespace Grand.Web.Models.Orders
             public string OrderId { get; set; }
         }
 
-        public partial class ShipmentBriefModel : BaseEntityModel
+        public class ShipmentBriefModel : BaseEntityModel
         {
             public string TrackingNumber { get; set; }
             public int ShipmentNumber { get; set; }

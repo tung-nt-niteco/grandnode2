@@ -1,8 +1,11 @@
 ﻿using Grand.Business.Core.Interfaces.Common.Directory;
+using Grand.Business.Core.Interfaces.Common.Security;
+using Grand.Business.Core.Utilities.Common.Security;
 using Grand.Domain.Data;
 using Grand.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Routing;
 
 namespace Grand.Web.Common.Filters
 {
@@ -35,17 +38,19 @@ namespace Grand.Web.Common.Filters
             #region Fields
 
             private readonly bool _ignoreFilter;
+            private readonly IPermissionService _permissionService;
             private readonly IWorkContext _workContext;
             private readonly IGroupService _groupService;
             #endregion
 
             #region Ctor
 
-            public AuthorizeVendorFilter(bool ignoreFilter, IWorkContext workContext, IGroupService groupService)
+            public AuthorizeVendorFilter(bool ignoreFilter, IWorkContext workContext, IGroupService groupService, IPermissionService permissionService)
             {
                 _ignoreFilter = ignoreFilter;
                 _workContext = workContext;
                 _groupService = groupService;
+                _permissionService = permissionService;
             }
 
             #endregion
@@ -55,7 +60,7 @@ namespace Grand.Web.Common.Filters
             /// <summary>
             /// Called early in the filter pipeline to confirm request is authorized
             /// </summary>
-            /// <param name="filterContext">Authorization filter context</param>
+            /// <param name="context">Authorization filter context</param>
             public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
             {
                 //ignore filter actions
@@ -74,13 +79,14 @@ namespace Grand.Web.Common.Filters
                 if (!DataSettingsManager.DatabaseIsInstalled())
                     return;
 
-                //whether current customer is vendor
-                if (!await _groupService.IsVendor(_workContext.CurrentCustomer))
-                    return;
-
+                //authorize permission of access to the vendor area
+                if (!await _permissionService.Authorize(StandardPermission.ManageAccessVendorPanel))
+                    context.Result = new RedirectToRouteResult("VendorLogin", new RouteValueDictionary());
+                
                 //ensure that this user has active vendor record associated
-                if (_workContext.CurrentVendor == null)
-                    context.Result = new ChallengeResult();
+                if (!await _groupService.IsVendor(_workContext.CurrentCustomer) || _workContext.CurrentVendor == null)
+                    context.Result = new RedirectToRouteResult("VendorLogin", new RouteValueDictionary());
+
             }
 
             #endregion

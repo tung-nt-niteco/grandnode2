@@ -1,6 +1,7 @@
 ﻿using FluentValidation;
-using FluentValidation.AspNetCore;
+using Grand.SharedKernel.Extensions;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Grand.Infrastructure.Validators
@@ -10,7 +11,7 @@ namespace Grand.Infrastructure.Validators
         #region Fields
 
         private readonly IServiceProvider _serviceProvider;
-        
+
         #endregion
 
         #region Ctor
@@ -28,6 +29,7 @@ namespace Grand.Infrastructure.Validators
         /// Called before the action executes, after model binding is complete
         /// </summary>
         /// <param name="context">A context for action filters</param>
+        /// <param name="next"></param>
         public async Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
         {
             //only in POST requests
@@ -36,20 +38,36 @@ namespace Grand.Infrastructure.Validators
                 await next();
                 return;
             }
-            if (context.ActionArguments.TryGetValue("model", out var model))
+            
+            foreach (var argument in context.ActionArguments.Where(x => !CommonHelper.IsSimpleType(x.Value?.GetType())))
             {
-                Type genericType = typeof(IValidator<>).MakeGenericType(model.GetType());
-                if (genericType is not null)
+                Type targetType = argument.Value!.GetType();
+                Type[] implementedInterfaces = new[] { targetType }.Concat(targetType.GetInterfaces()).ToArray();
+                foreach (Type interfaceType in implementedInterfaces)
                 {
+                    Type genericType = typeof(IValidator<>).MakeGenericType(interfaceType);
                     var validator = (IValidator)_serviceProvider.GetService(genericType);
-                    if (validator is not null)
+                    if (validator is null)
                     {
-                        var contextvalidator = new ValidationContext<object>(model);
-                        var result = await validator.ValidateAsync(contextvalidator);
-                        if (!result.IsValid) result.AddToModelState(context.ModelState, "");
+                        continue;
+                    }
+                    var contextValidator = new ValidationContext<object>(argument.Value);
+                    var result = await validator.ValidateAsync(contextValidator);
+                    if (result.IsValid) continue;
+                    foreach (var error in result.Errors)
+                    {
+                        context.ModelState.AddModelError(error.PropertyName, error.ErrorMessage);
                     }
                 }
+
+                var hasJsonData = context.HttpContext.Request.ContentType?.Contains("application/json") ?? false;
+                if (!hasJsonData) continue;
+                if (context.ModelState.IsValid) continue;
+                context.Result = new BadRequestObjectResult(context.ModelState);
+                return;
+                
             }
+
             await next();
         }
         #endregion

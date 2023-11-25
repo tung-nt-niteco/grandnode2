@@ -1,17 +1,16 @@
-﻿using Grand.Business.Core.Interfaces.Catalog.Discounts;
+﻿using DiscountRules.Standard.Models;
+using Grand.Business.Core.Interfaces.Catalog.Discounts;
 using Grand.Business.Core.Interfaces.Common.Security;
 using Grand.Business.Core.Utilities.Common.Security;
+using Grand.Domain.Discounts;
 using Grand.Web.Common.Controllers;
 using Grand.Web.Common.Filters;
-using Grand.Domain.Discounts;
 using Microsoft.AspNetCore.Mvc;
-using DiscountRules.Standard.HadSpentAmount.Models;
+using System.Globalization;
 
-namespace DiscountRules.Standard.HadSpentAmount.Controllers
+namespace DiscountRules.Standard.Areas.Admin.Controllers
 {
-    [Area("Admin")]
-    [AuthorizeAdmin]
-    public class HadSpentAmountController : BasePluginController
+    public class HadSpentAmountController : BaseAdminPluginController
     {
         private readonly IDiscountService _discountService;
         private readonly IPermissionService _permissionService;
@@ -43,16 +42,17 @@ namespace DiscountRules.Standard.HadSpentAmount.Controllers
                 spentAmountRequirement = Convert.ToDouble(discountRequirement.Metadata);
             }
 
-            var model = new RequirementModel {
+            var model = new RequirementSpentAmountModel {
                 RequirementId = !string.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "",
                 DiscountId = discountId,
                 SpentAmount = spentAmountRequirement
             };
 
             //add a prefix
-            ViewData.TemplateInfo.HtmlFieldPrefix = string.Format("DiscountRulesHadSpentAmount{0}-{1}", discount.Id, !String.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "");
+            ViewData.TemplateInfo.HtmlFieldPrefix =
+                $"DiscountRulesHadSpentAmount{discount.Id}-{(!string.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "")}";
 
-            return View(model);
+            return View((object)model);
         }
 
         [HttpPost]
@@ -73,7 +73,7 @@ namespace DiscountRules.Standard.HadSpentAmount.Controllers
             if (discountRequirement != null)
             {
                 //update existing rule
-                discountRequirement.Metadata = spentAmount.ToString();
+                discountRequirement.Metadata = spentAmount.ToString(CultureInfo.InvariantCulture);
                 await _discountService.UpdateDiscount(discount);
             }
             else
@@ -81,7 +81,7 @@ namespace DiscountRules.Standard.HadSpentAmount.Controllers
                 //save new rule
                 discountRequirement = new DiscountRule {
                     DiscountRequirementRuleSystemName = "DiscountRules.Standard.HadSpentAmount",
-                    Metadata = spentAmount.ToString()
+                    Metadata = spentAmount.ToString(CultureInfo.InvariantCulture)
                 };
                 discount.DiscountRules.Add(discountRequirement);
                 await _discountService.UpdateDiscount(discount);

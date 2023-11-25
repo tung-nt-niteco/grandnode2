@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Messages;
+﻿using Grand.Domain.Messages;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallEmailAccounts()
         {
@@ -19,7 +18,7 @@ namespace Grand.Business.System.Services.Installation
                                            Password = "123",
                                            SecureSocketOptionsId = 1,
                                            UseServerCertificateValidation = true
-                                       },
+                                       }
                                };
             await _emailAccountRepository.InsertAsync(emailAccounts);
         }

@@ -7,8 +7,8 @@ using Grand.Domain.Data;
 using Grand.Infrastructure;
 using Grand.Infrastructure.Caching;
 using Grand.Infrastructure.Caching.Constants;
+using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Extensions;
-using Grand.SharedKernel.Extensions;
 using MediatR;
 
 namespace Grand.Business.Catalog.Services.Categories
@@ -19,17 +19,19 @@ namespace Grand.Business.Catalog.Services.Categories
         private readonly ICacheBase _cacheBase;
         private readonly IWorkContext _workContext;
         private readonly IMediator _mediator;
-
+        private readonly AccessControlConfig _accessControlConfig;
+        
         public ProductCategoryService(
             IRepository<Product> productRepository,
             ICacheBase cacheBase,
             IWorkContext workContext,
-            IMediator mediator)
+            IMediator mediator, AccessControlConfig accessControlConfig)
         {
             _productRepository = productRepository;
             _cacheBase = cacheBase;
             _workContext = workContext;
             _mediator = mediator;
+            _accessControlConfig = accessControlConfig;
         }
 
         /// <summary>
@@ -43,17 +45,17 @@ namespace Grand.Business.Catalog.Services.Categories
         public virtual async Task<IPagedList<ProductsCategory>> GetProductCategoriesByCategoryId(string categoryId,
             int pageIndex = 0, int pageSize = int.MaxValue, bool showHidden = false)
         {
-            if (String.IsNullOrEmpty(categoryId))
+            if (string.IsNullOrEmpty(categoryId))
                 return new PagedList<ProductsCategory>(new List<ProductsCategory>(), pageIndex, pageSize);
 
-            string key = string.Format(CacheKey.PRODUCTCATEGORIES_ALLBYCATEGORYID_KEY, showHidden, categoryId, pageIndex, pageSize, _workContext.CurrentCustomer.Id, _workContext.CurrentStore.Id);
+            var key = string.Format(CacheKey.PRODUCTCATEGORIES_ALLBYCATEGORYID_KEY, showHidden, categoryId, pageIndex, pageSize, _workContext.CurrentCustomer.Id, _workContext.CurrentStore.Id);
             return await _cacheBase.GetAsync(key, () =>
             {
                 var query = _productRepository.Table.Where(x => x.ProductCategories.Any(y => y.CategoryId == categoryId));
 
-                if (!showHidden && (!CommonHelper.IgnoreAcl || !CommonHelper.IgnoreStoreLimitations))
+                if (!showHidden && (!_accessControlConfig.IgnoreAcl || !_accessControlConfig.IgnoreStoreLimitations))
                 {
-                    if (!CommonHelper.IgnoreAcl)
+                    if (!_accessControlConfig.IgnoreAcl)
                     {
                         //Limited to customer groups
                         var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
@@ -61,7 +63,7 @@ namespace Grand.Business.Catalog.Services.Categories
                                 where !p.LimitedToGroups || allowedCustomerGroupsIds.Any(x => p.CustomerGroups.Contains(x))
                                 select p;
                     }
-                    if (!CommonHelper.IgnoreStoreLimitations)
+                    if (!_accessControlConfig.IgnoreStoreLimitations)
                     {
                         //Limited to stores
                         var currentStoreId = _workContext.CurrentStore.Id;
@@ -73,7 +75,7 @@ namespace Grand.Business.Catalog.Services.Categories
 
 
                 }
-                var query_productCategories = from prod in query
+                var queryProductCategories = from prod in query
                                               from pc in prod.ProductCategories
                                               select new ProductsCategory
                                               {
@@ -81,15 +83,15 @@ namespace Grand.Business.Catalog.Services.Categories
                                                   DisplayOrder = pc.DisplayOrder,
                                                   Id = pc.Id,
                                                   ProductId = prod.Id,
-                                                  IsFeaturedProduct = pc.IsFeaturedProduct,
+                                                  IsFeaturedProduct = pc.IsFeaturedProduct
                                               };
 
-                query_productCategories = from pm in query_productCategories
+                queryProductCategories = from pm in queryProductCategories
                                           where pm.CategoryId == categoryId
                                           orderby pm.DisplayOrder
                                           select pm;
 
-                return Task.FromResult(new PagedList<ProductsCategory>(query_productCategories, pageIndex, pageSize));
+                return Task.FromResult(new PagedList<ProductsCategory>(queryProductCategories, pageIndex, pageSize));
             });
         }
 

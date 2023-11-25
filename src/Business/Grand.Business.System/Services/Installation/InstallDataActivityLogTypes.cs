@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Logging;
+﻿using Grand.Domain.Logging;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallActivityLogTypes()
         {

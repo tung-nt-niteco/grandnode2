@@ -4,7 +4,7 @@ using Grand.Domain.Stores;
 
 namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
 {
-    public partial class LiquidNewsLetterSubscription : Drop
+    public class LiquidNewsLetterSubscription : Drop
     {
         private readonly NewsLetterSubscription _subscription;
         private readonly Store _store;
@@ -32,7 +32,7 @@ namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
         {
             get
             {
-                string urlFormat = "{0}/newsletter/subscriptionactivation/{1}/{2}";
+                var urlFormat = "{0}/newsletter/subscriptionactivation/{1}/{2}";
                 var activationUrl = String.Format(urlFormat, url, _subscription.NewsLetterSubscriptionGuid, "true");
                 return activationUrl;
             }
@@ -42,7 +42,7 @@ namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
         {
             get
             {
-                string urlFormat = "{0}/newsletter/subscriptionactivation/{1}/{2}";
+                var urlFormat = "{0}/newsletter/subscriptionactivation/{1}/{2}";
                 var deActivationUrl = String.Format(urlFormat, url, _subscription.NewsLetterSubscriptionGuid, "false");
                 return deActivationUrl;
             }

@@ -1,6 +1,4 @@
-﻿using Grand.Business.Core.Utilities.ExportImport;
-
-namespace Grand.Business.Core.Interfaces.ExportImport
+﻿namespace Grand.Business.Core.Interfaces.ExportImport
 {
     public interface IExportManager<T>
     {
@@ -8,7 +6,7 @@ namespace Grand.Business.Core.Interfaces.ExportImport
         /// Export list of entity to XLSX
         /// </summary>
         /// <param name="entity">list of entity</param>
-        byte[] Export(IEnumerable<T> entity);
+        Task<byte[]> Export(IEnumerable<T> entity);
 
     }
 }

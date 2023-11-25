@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Catalog;
+﻿using Grand.Domain.Catalog;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallProductLayouts()
         {
@@ -20,7 +19,7 @@ namespace Grand.Business.System.Services.Installation
                                            Name = "Grouped product (with variants)",
                                            ViewPath = "ProductLayout.Grouped",
                                            DisplayOrder = 100
-                                       },
+                                       }
                                };
             await _productLayoutRepository.InsertAsync(productLayouts);
         }

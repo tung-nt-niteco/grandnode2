@@ -2,20 +2,21 @@
 using Grand.Domain.Data;
 using Grand.Infrastructure.Caching.RabbitMq;
 using Grand.Infrastructure.Configuration;
+using Grand.Infrastructure.Extensions;
 using Grand.Infrastructure.Mapper;
 using Grand.Infrastructure.Plugins;
 using Grand.Infrastructure.Roslyn;
 using Grand.Infrastructure.TypeConverters;
-using Grand.Infrastructure.TypeSearchers;
+using Grand.Infrastructure.TypeSearch;
 using Grand.Infrastructure.Validators;
 using Grand.SharedKernel;
 using Grand.SharedKernel.Extensions;
 using MassTransit;
-using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Binders;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -33,12 +34,12 @@ namespace Grand.Infrastructure
         /// </summary>
         private static void InitDatabase(IServiceCollection services, IConfiguration configuration)
         {
-            var advancedConfig = services.StartupConfig<AdvancedConfig>(configuration.GetSection("Advanced"));
-            if (!string.IsNullOrEmpty(advancedConfig.DbConnectionString))
+            var dbConfig = services.StartupConfig<DatabaseConfig>(configuration.GetSection("Database"));
+            if (!string.IsNullOrEmpty(dbConfig.DbConnectionString))
             {
-                DataSettingsManager.LoadDataSettings(new DataSettings() {
-                    ConnectionString = advancedConfig.DbConnectionString,
-                    DbProvider = (DbProvider)advancedConfig.DbProvider,
+                DataSettingsManager.LoadDataSettings(new DataSettings {
+                    ConnectionString = dbConfig.DbConnectionString,
+                    DbProvider = (DbProvider)dbConfig.DbProvider
                 });
             }
         }
@@ -54,9 +55,9 @@ namespace Grand.Infrastructure
 
             //create and sort instances of mapper configurations
             var instances = mapperConfigurations
-                .Where(mapperConfiguration => PluginExtensions.OnlyInstalledPlugins(mapperConfiguration))
+                .Where(PluginExtensions.OnlyInstalledPlugins)
                 .Select(mapperConfiguration => (IAutoMapperProfile)Activator.CreateInstance(mapperConfiguration))
-                .OrderBy(mapperConfiguration => mapperConfiguration.Order);
+                .OrderBy(mapperConfiguration => mapperConfiguration!.Order);
 
             //create AutoMapper configuration
             var config = new MapperConfiguration(cfg =>
@@ -83,13 +84,27 @@ namespace Grand.Infrastructure
             //create and sort instances of typeConverter 
             var instances = converters
                 .Select(converter => (ITypeConverter)Activator.CreateInstance(converter))
-                .OrderBy(converter => converter.Order);
+                .OrderBy(converter => converter!.Order);
 
             foreach (var item in instances)
                 item.Register();
         }
 
-        private static T StartupConfig<T>(this IServiceCollection services, IConfiguration configuration) where T : class, new()
+        /// <summary>
+        /// Register type ValidatorConsumer
+        /// </summary>
+        /// <param name="services">Service collection</param>
+        /// <param name="typeSearcher">TypeSearcher</param>
+        private static void RegisterValidatorConsumer(IServiceCollection services, ITypeSearcher typeSearcher)
+        {
+            services.Scan(scan => scan.FromAssemblies(typeSearcher.GetAssemblies())
+                .AddClasses(classes => classes.AssignableTo(typeof(IValidatorConsumer<>)))
+                .AsImplementedInterfaces().WithScopedLifetime());
+        }
+
+
+        private static T StartupConfig<T>(this IServiceCollection services, IConfiguration configuration)
+            where T : class, new()
         {
             if (services == null)
                 throw new ArgumentNullException(nameof(services));
@@ -123,7 +138,7 @@ namespace Grand.Infrastructure
             //Load plugins
             PluginManager.Load(mvcCoreBuilder, configuration);
 
-            //Load CTX sctipts
+            //Load CTX scripts
             RoslynCompiler.Load(mvcCoreBuilder.PartManager, configuration);
         }
 
@@ -131,17 +146,24 @@ namespace Grand.Infrastructure
         /// Adds services for mediatR
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
-        private static void AddMediator(this IServiceCollection services, AppTypeSearcher typeSearcher)
+        /// <param name="typeSearcher"></param>
+        private static void AddMediator(this IServiceCollection services, ITypeSearcher typeSearcher)
         {
             var assemblies = typeSearcher.GetAssemblies().ToArray();
-            services.AddMediatR(assemblies);
+            services.AddMediatR(options =>
+            {
+                options.RegisterServicesFromAssemblies(assemblies);
+            });
         }
 
         /// <summary>
-        /// Add Mass Transit rabitMq message broker
+        /// Add Mass Transit rabbitmq message broker
         /// </summary>
         /// <param name="services"></param>
-        private static void AddMassTransitRabbitMq(IServiceCollection services, IConfiguration configuration, AppTypeSearcher typeSearcher)
+        /// <param name="configuration"></param>
+        /// <param name="typeSearcher"></param>
+        private static void AddMassTransitRabbitMq(IServiceCollection services, IConfiguration configuration,
+            ITypeSearcher typeSearcher)
         {
             var config = new RabbitConfig();
             configuration.GetSection("Rabbit").Bind(config);
@@ -149,12 +171,12 @@ namespace Grand.Infrastructure
             if (!config.RabbitEnabled) return;
             services.AddMassTransit(x =>
             {
-                x.AddConsumers(q => !q.Equals(typeof(CacheMessageEventConsumer)), typeSearcher.GetAssemblies().ToArray());
+                x.AddConsumers(q => q != typeof(CacheMessageEventConsumer), typeSearcher.GetAssemblies().ToArray());
 
-                // reddits have more priority
                 if (config.RabbitCachePubSubEnabled)
                 {
-                    x.AddConsumer<CacheMessageEventConsumer>().Endpoint(t => t.Name = config.RabbitCacheReceiveEndpoint);
+                    x.AddConsumer<CacheMessageEventConsumer>()
+                        .Endpoint(t => t.Name = config.RabbitCacheReceiveEndpoint);
                 }
 
                 x.UsingRabbitMq((context, cfg) =>
@@ -174,15 +196,18 @@ namespace Grand.Infrastructure
         /// </summary>
         /// <param name="services">Collection of service descriptors</param>
         /// <param name="configuration">Configuration</param>
-        private static IMvcCoreBuilder RegisterApplication(IServiceCollection services, IConfiguration configuration)
+        /// <param name="typeSearcher">Type searcher</param>
+        private static IMvcCoreBuilder RegisterApplication(IServiceCollection services, IConfiguration configuration, ITypeSearcher typeSearcher)
         {
             //add accessor to HttpContext
             services.AddHttpContextAccessor();
             //add AppConfig configuration parameters
             services.StartupConfig<AppConfig>(configuration.GetSection("Application"));
             var performanceConfig = services.StartupConfig<PerformanceConfig>(configuration.GetSection("Performance"));
-            var securityConfig = services.StartupConfig<SecurityConfig>(configuration.GetSection("Security"));
+            services.StartupConfig<SecurityConfig>(configuration.GetSection("Security"));
             services.StartupConfig<ExtensionsConfig>(configuration.GetSection("Extensions"));
+            services.StartupConfig<CacheConfig>(configuration.GetSection("Cache"));
+            services.StartupConfig<AccessControlConfig>(configuration.GetSection("AccessControl"));
             services.StartupConfig<UrlRewriteConfig>(configuration.GetSection("UrlRewrite"));
             services.StartupConfig<RedisConfig>(configuration.GetSection("Redis"));
             services.StartupConfig<RabbitConfig>(configuration.GetSection("Rabbit"));
@@ -204,16 +229,18 @@ namespace Grand.Infrastructure
 
             CommonPath.WebHostEnvironment = hostingEnvironment.WebRootPath;
             CommonPath.BaseDirectory = hostingEnvironment.ContentRootPath;
-            CommonHelper.CacheTimeMinutes = performanceConfig.DefaultCacheTimeMinutes;
-            CommonHelper.CookieAuthExpires = securityConfig.CookieAuthExpires > 0 ? securityConfig.CookieAuthExpires : 24 * 365;
-
-            CommonHelper.IgnoreAcl = performanceConfig.IgnoreAcl;
-            CommonHelper.IgnoreStoreLimitations = performanceConfig.IgnoreStoreLimitations;
-
+            
             services.AddTransient<FluentValidationFilter>();
             var mvcCoreBuilder = services.AddMvcCore(options =>
             {
                 options.Filters.AddService<FluentValidationFilter>();
+                var frontConfig = new FrontendAPIConfig();
+                configuration.GetSection("FrontendAPI").Bind(frontConfig);
+                if (frontConfig.JsonContentType)
+                {
+                    options.UseJsonBodyModelBinderProviderInsteadOf<DictionaryModelBinderProvider>();
+                    options.UseJsonBodyModelBinderProviderInsteadOf<ComplexObjectModelBinderProvider>();
+                }
             });
 
             return mvcCoreBuilder;
@@ -221,9 +248,7 @@ namespace Grand.Infrastructure
 
         #endregion
 
-
         #region Methods
-
 
         /// <summary>
         /// Add and configure services
@@ -232,23 +257,23 @@ namespace Grand.Infrastructure
         /// <param name="configuration">Configuration root of the application</param>
         public static void ConfigureServices(IServiceCollection services, IConfiguration configuration)
         {
+            //find startup configurations provided by other assemblies
+            var typeSearcher = new TypeSearcher();
+            services.AddSingleton<ITypeSearcher>(typeSearcher);
+
             //register application
-            var mvcBuilder = RegisterApplication(services, configuration);
+            var mvcBuilder = RegisterApplication(services, configuration, typeSearcher);
 
             //register extensions 
             RegisterExtensions(mvcBuilder, configuration);
-
-            //find startup configurations provided by other assemblies
-            var typeSearcher = new AppTypeSearcher();
-            services.AddSingleton<ITypeSearcher>(typeSearcher);
 
             var startupConfigurations = typeSearcher.ClassesOfType<IStartupApplication>();
 
             //Register startup
             var instancesBefore = startupConfigurations
-                .Where(startup => PluginExtensions.OnlyInstalledPlugins(startup))
+                .Where(PluginExtensions.OnlyInstalledPlugins)
                 .Select(startup => (IStartupApplication)Activator.CreateInstance(startup))
-                .Where(startup => startup.BeforeConfigure)
+                .Where(startup => startup!.BeforeConfigure)
                 .OrderBy(startup => startup.Priority);
 
             //configure services
@@ -261,6 +286,9 @@ namespace Grand.Infrastructure
             //Register custom type converters
             RegisterTypeConverter(typeSearcher);
 
+            //Register type validator consumer
+            RegisterValidatorConsumer(services, typeSearcher);
+
             //add mediator
             AddMediator(services, typeSearcher);
 
@@ -269,16 +297,16 @@ namespace Grand.Infrastructure
 
             //Register startup
             var instancesAfter = startupConfigurations
-                .Where(startup => PluginExtensions.OnlyInstalledPlugins(startup))
+                .Where(PluginExtensions.OnlyInstalledPlugins)
                 .Select(startup => (IStartupApplication)Activator.CreateInstance(startup))
-                .Where(startup => !startup.BeforeConfigure)
+                .Where(startup => !startup!.BeforeConfigure)
                 .OrderBy(startup => startup.Priority);
 
             //configure services
             foreach (var instance in instancesAfter)
                 instance.ConfigureServices(services, configuration);
 
-            //Execute startupbase interface
+            //Execute startup interface
             ExecuteStartupBase(typeSearcher);
         }
 
@@ -287,31 +315,32 @@ namespace Grand.Infrastructure
         /// </summary>
         /// <param name="application">Builder for configuring an application's request pipeline</param>
         /// <param name="webHostEnvironment">WebHostEnvironment</param>
-        public static void ConfigureRequestPipeline(IApplicationBuilder application, IWebHostEnvironment webHostEnvironment)
+        public static void ConfigureRequestPipeline(IApplicationBuilder application,
+            IWebHostEnvironment webHostEnvironment)
         {
             //find startup configurations provided by other assemblies
-            var typeSearcher = new AppTypeSearcher();
+            var typeSearcher = new TypeSearcher();
             var startupConfigurations = typeSearcher.ClassesOfType<IStartupApplication>();
 
             //create and sort instances of startup configurations
             var instances = startupConfigurations
-                .Where(startup => PluginExtensions.OnlyInstalledPlugins(startup))
+                .Where(PluginExtensions.OnlyInstalledPlugins)
                 .Select(startup => (IStartupApplication)Activator.CreateInstance(startup))
-                .OrderBy(startup => startup.Priority);
+                .OrderBy(startup => startup!.Priority);
 
             //configure request pipeline
             foreach (var instance in instances)
                 instance.Configure(application, webHostEnvironment);
         }
 
-        private static void ExecuteStartupBase(AppTypeSearcher typeSearcher)
+        private static void ExecuteStartupBase(ITypeSearcher typeSearcher)
         {
             var startupBaseConfigurations = typeSearcher.ClassesOfType<IStartupBase>();
 
             //create and sort instances of startup configurations
             var instances = startupBaseConfigurations
                 .Select(startup => (IStartupBase)Activator.CreateInstance(startup))
-                .OrderBy(startup => startup.Priority);
+                .OrderBy(startup => startup!.Priority);
 
             //execute
             foreach (var instance in instances)
@@ -319,6 +348,5 @@ namespace Grand.Infrastructure
         }
 
         #endregion
-
     }
 }

@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Grand.Web.Admin.Models.Orders
 {
-    public partial class OrderListModel : BaseModel
+    public class OrderListModel : BaseModel
     {
         public OrderListModel()
         {
@@ -74,8 +74,6 @@ namespace Grand.Web.Admin.Models.Orders
         [GrandResourceDisplayName("Admin.Orders.List.GoDirectlyToNumber")]
         
         public string GoDirectlyToNumber { get; set; }
-
-        public bool IsLoggedInAsVendor { get; set; }
 
         [GrandResourceDisplayName("Admin.Orders.List.OrderTagId")]
         public string OrderTag { get; set; }

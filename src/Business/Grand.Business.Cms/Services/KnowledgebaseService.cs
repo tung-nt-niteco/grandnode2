@@ -6,8 +6,8 @@ using Grand.Domain.Knowledgebase;
 using Grand.Infrastructure;
 using Grand.Infrastructure.Caching;
 using Grand.Infrastructure.Caching.Constants;
+using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Extensions;
-using Grand.SharedKernel.Extensions;
 using MediatR;
 
 namespace Grand.Business.Cms.Services
@@ -20,7 +20,8 @@ namespace Grand.Business.Cms.Services
         private readonly IMediator _mediator;
         private readonly IWorkContext _workContext;
         private readonly ICacheBase _cacheBase;
-
+        private readonly AccessControlConfig _accessControlConfig;
+        
         /// <summary>
         /// Ctor
         /// </summary>
@@ -30,8 +31,7 @@ namespace Grand.Business.Cms.Services
             IRepository<KnowledgebaseArticleComment> articleCommentRepository,
             IMediator mediator,
             IWorkContext workContext,
-            ICacheBase cacheBase
-            )
+            ICacheBase cacheBase, AccessControlConfig accessControlConfig)
         {
             _knowledgebaseCategoryRepository = knowledgebaseCategoryRepository;
             _knowledgebaseArticleRepository = knowledgebaseArticleRepository;
@@ -39,12 +39,13 @@ namespace Grand.Business.Cms.Services
             _mediator = mediator;
             _workContext = workContext;
             _cacheBase = cacheBase;
+            _accessControlConfig = accessControlConfig;
         }
 
         /// <summary>
-        /// Deletes knowledgebase category
+        /// Deletes knowledge base category
         /// </summary>
-        /// <param name="id"></param>
+        /// <param name="kc"></param>
         public virtual async Task DeleteKnowledgebaseCategory(KnowledgebaseCategory kc)
         {
             var children = _knowledgebaseCategoryRepository.Table.Where(x => x.ParentCategoryId == kc.Id).ToList();
@@ -62,7 +63,7 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Edits knowledgebase category
+        /// Edits knowledge base category
         /// </summary>
         /// <param name="kc"></param>
         public virtual async Task UpdateKnowledgebaseCategory(KnowledgebaseCategory kc)
@@ -75,23 +76,23 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase category
+        /// Gets knowledge base category
         /// </summary>
         /// <param name="id"></param>
-        /// <returns>knowledgebase category</returns>
+        /// <returns>knowledge base category</returns>
         public virtual async Task<KnowledgebaseCategory> GetKnowledgebaseCategory(string id)
         {
-            return await Task.FromResult(_knowledgebaseCategoryRepository.Table.Where(x => x.Id == id).FirstOrDefault());
+            return await Task.FromResult(_knowledgebaseCategoryRepository.Table.FirstOrDefault(x => x.Id == id));
         }
 
         /// <summary>
-        /// Gets knowledgebase category
+        /// Gets knowledge base category
         /// </summary>
         /// <param name="id"></param>
-        /// <returns>knowledgebase category</returns>
+        /// <returns>knowledge base category</returns>
         public virtual async Task<KnowledgebaseCategory> GetPublicKnowledgebaseCategory(string id)
         {
-            string key = string.Format(CacheKey.KNOWLEDGEBASE_CATEGORY_BY_ID, id, _workContext.CurrentCustomer.GetCustomerGroupIds(),
+            var key = string.Format(CacheKey.KNOWLEDGEBASE_CATEGORY_BY_ID, id, _workContext.CurrentCustomer.GetCustomerGroupIds(),
                 _workContext.CurrentStore.Id);
             return await _cacheBase.GetAsync(key, async () =>
             {
@@ -101,7 +102,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(x => x.Published);
                 query = query.Where(x => x.Id == id);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     //Limited to customer groups rules
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
@@ -110,7 +111,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
@@ -124,7 +125,7 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Inserts knowledgebase category
+        /// Inserts knowledge base category
         /// </summary>
         /// <param name="kc"></param>
         public virtual async Task InsertKnowledgebaseCategory(KnowledgebaseCategory kc)
@@ -141,9 +142,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase categories
+        /// Gets knowledge base categories
         /// </summary>
-        /// <returns>List of knowledgebase categories</returns>
+        /// <returns>List of knowledge base categories</returns>
         public virtual async Task<List<KnowledgebaseCategory>> GetKnowledgebaseCategories()
         {
             var categories = _knowledgebaseCategoryRepository.Table.OrderBy(x => x.ParentCategoryId).ThenBy(x => x.DisplayOrder).ToList();
@@ -151,28 +152,25 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase article
+        /// Gets knowledge base article
         /// </summary>
         /// <param name="id"></param>
-        /// <returns>knowledgebase article</returns>
+        /// <returns>knowledge base article</returns>
         public virtual Task<KnowledgebaseArticle> GetKnowledgebaseArticle(string id)
         {
             return _knowledgebaseArticleRepository.GetByIdAsync(id);
         }
 
         /// <summary>
-        /// Gets knowledgebase articles
+        /// Gets knowledge base articles
         /// </summary>
-        /// <returns>List of knowledgebase articles</returns>
+        /// <returns>List of knowledge base articles</returns>
         /// <param name="storeId">Store ident</param>
         public virtual async Task<List<KnowledgebaseArticle>> GetKnowledgebaseArticles(string storeId = "")
         {
             var query = from p in _knowledgebaseArticleRepository.Table
                         select p;
-
-            var customer = _workContext.CurrentCustomer;
-
-            if (!CommonHelper.IgnoreAcl)
+            if (!_accessControlConfig.IgnoreAcl)
             {
                 var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                 query = from p in query
@@ -180,7 +178,7 @@ namespace Grand.Business.Cms.Services
                         select p;
             }
 
-            if (!CommonHelper.IgnoreStoreLimitations && !string.IsNullOrEmpty(storeId))
+            if (!_accessControlConfig.IgnoreStoreLimitations && !string.IsNullOrEmpty(storeId))
             {
                 //Limited to stores rules
                 query = from p in query
@@ -192,7 +190,7 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Inserts knowledgebase article
+        /// Inserts knowledge base article
         /// </summary>
         /// <param name="ka"></param>
         public virtual async Task InsertKnowledgebaseArticle(KnowledgebaseArticle ka)
@@ -206,7 +204,7 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Edits knowledgebase article
+        /// Edits knowledge base article
         /// </summary>
         /// <param name="ka"></param>
         public virtual async Task UpdateKnowledgebaseArticle(KnowledgebaseArticle ka)
@@ -219,9 +217,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Deletes knowledgebase article
+        /// Deletes knowledge base article
         /// </summary>
-        /// <param name="id"></param>
+        /// <param name="ka"></param>
         public virtual async Task DeleteKnowledgebaseArticle(KnowledgebaseArticle ka)
         {
             await _knowledgebaseArticleRepository.DeleteAsync(ka);
@@ -231,10 +229,11 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase articles by category id
+        /// Gets knowledge base articles by category id
         /// </summary>
         /// <param name="id"></param>
-        /// <returns>IPagedList<KnowledgebaseArticle></returns>
+        /// <param name="pageIndex"></param>
+        /// <param name="pageSize"></param>
         public virtual async Task<IPagedList<KnowledgebaseArticle>> GetKnowledgebaseArticlesByCategoryId(string id, int pageIndex = 0, int pageSize = int.MaxValue)
         {
             var articles = await Task.FromResult(_knowledgebaseArticleRepository.Table.Where(x => x.ParentCategoryId == id).OrderBy(x => x.DisplayOrder).ToList());
@@ -242,7 +241,7 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets public(published etc) knowledgebase categories
+        /// Gets public(published etc) knowledge base categories
         /// </summary>
         /// <returns>List of public knowledgebase categories</returns>
         public virtual async Task<List<KnowledgebaseCategory>> GetPublicKnowledgebaseCategories()
@@ -256,7 +255,7 @@ namespace Grand.Business.Cms.Services
 
                 query = query.Where(x => x.Published);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -264,7 +263,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
@@ -278,9 +277,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets public(published etc) knowledgebase articles
+        /// Gets public(published etc) knowledge base articles
         /// </summary>
-        /// <returns>List of public knowledgebase articles</returns>
+        /// <returns>List of public knowledge base articles</returns>
         public virtual async Task<List<KnowledgebaseArticle>> GetPublicKnowledgebaseArticles()
         {
             var key = string.Format(CacheKey.ARTICLES, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -293,7 +292,7 @@ namespace Grand.Business.Cms.Services
 
                 query = query.Where(x => x.Published);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -301,7 +300,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
@@ -315,9 +314,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase article if it is published etc
+        /// Gets knowledge base article if it is published etc
         /// </summary>
-        /// <returns>knowledgebase article</returns>
+        /// <returns>knowledge base article</returns>
         public virtual async Task<KnowledgebaseArticle> GetPublicKnowledgebaseArticle(string id)
         {
             var key = string.Format(CacheKey.ARTICLE_BY_ID, id, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -330,7 +329,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(x => x.Published);
                 query = query.Where(x => x.Id == id);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -338,7 +337,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
@@ -351,9 +350,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets public(published etc) knowledgebase articles for category id
+        /// Gets public(published etc) knowledge base articles for category id
         /// </summary>
-        /// <returns>List of public knowledgebase articles</returns>
+        /// <returns>List of public knowledge base articles</returns>
         public virtual async Task<List<KnowledgebaseArticle>> GetPublicKnowledgebaseArticlesByCategory(string categoryId)
         {
             var key = string.Format(CacheKey.ARTICLES_BY_CATEGORY_ID, categoryId, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -366,7 +365,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(x => x.Published);
                 query = query.Where(x => x.ParentCategoryId == categoryId);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -374,10 +373,9 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
-                    var currentStoreId = new List<string> { _workContext.CurrentStore.Id };
                     query = from p in query
                             where !p.LimitedToStores || p.Stores.Contains(_workContext.CurrentStore.Id)
                             select p;
@@ -388,9 +386,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets public(published etc) knowledgebase articles for keyword
+        /// Gets public(published etc) knowledge base articles for keyword
         /// </summary>
-        /// <returns>List of public knowledgebase articles</returns>
+        /// <returns>List of public knowledge base articles</returns>
         public virtual async Task<List<KnowledgebaseArticle>> GetPublicKnowledgebaseArticlesByKeyword(string keyword)
         {
             var key = string.Format(CacheKey.ARTICLES_BY_KEYWORD, keyword, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -406,7 +404,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(p => p.Locales.Any(x => x.LocaleValue != null && x.LocaleValue.ToLower().Contains(keyword.ToLower()))
                     || p.Name.ToLower().Contains(keyword.ToLower()) || p.Content.ToLower().Contains(keyword.ToLower()));
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -414,10 +412,9 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
-                    var currentStoreId = new List<string> { _workContext.CurrentStore.Id };
                     query = from p in query
                             where !p.LimitedToStores || p.Stores.Contains(_workContext.CurrentStore.Id)
                             select p;
@@ -428,9 +425,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets public(published etc) knowledgebase categories for keyword
+        /// Gets public(published etc) knowledge base categories for keyword
         /// </summary>
-        /// <returns>List of public knowledgebase categories</returns>
+        /// <returns>List of public knowledge base categories</returns>
         public virtual async Task<List<KnowledgebaseCategory>> GetPublicKnowledgebaseCategoriesByKeyword(string keyword)
         {
             var key = string.Format(CacheKey.KNOWLEDGEBASE_CATEGORIES_BY_KEYWORD, keyword, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -445,7 +442,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(p => p.Locales.Any(x => x.LocaleValue != null && x.LocaleValue.ToLower().Contains(keyword.ToLower()))
                     || p.Name.ToLower().Contains(keyword.ToLower()) || p.Description.ToLower().Contains(keyword.ToLower()));
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -453,12 +450,12 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
                             where !p.LimitedToStores || p.Stores.Contains(_workContext.CurrentStore.Id)
-                            select p; ;
+                            select p; 
                 }
                 query = query.OrderBy(x => x.DisplayOrder);
                 return await Task.FromResult(query.ToList());
@@ -467,9 +464,9 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets homepage knowledgebase articles
+        /// Gets homepage knowledge base articles
         /// </summary>
-        /// <returns>List of homepage knowledgebase articles</returns>
+        /// <returns>List of homepage knowledge base articles</returns>
         public virtual async Task<List<KnowledgebaseArticle>> GetHomepageKnowledgebaseArticles()
         {
             var key = string.Format(CacheKey.HOMEPAGE_ARTICLES, string.Join(",", _workContext.CurrentCustomer.GetCustomerGroupIds()),
@@ -482,7 +479,7 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(x => x.Published);
                 query = query.Where(x => x.ShowOnHomepage);
 
-                if (!CommonHelper.IgnoreAcl)
+                if (!_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -490,7 +487,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
 
-                if (!CommonHelper.IgnoreStoreLimitations)
+                if (!_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Store acl
                     query = from p in query
@@ -504,10 +501,11 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets knowledgebase articles by name
+        /// Gets knowledge base articles by name
         /// </summary>
         /// <param name="name"></param>
-        /// <returns>IPagedList<KnowledgebaseArticle></returns>
+        /// <param name="pageIndex"></param>
+        /// <param name="pageSize"></param>
         public virtual async Task<IPagedList<KnowledgebaseArticle>> GetKnowledgebaseArticlesByName(string name, int pageIndex = 0, int pageSize = int.MaxValue)
         {
             var query = from p in _knowledgebaseArticleRepository.Table
@@ -531,10 +529,8 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Gets related knowledgebase articles
+        /// Gets related knowledge base articles
         /// </summary>
-        /// <param name="name"></param>
-        /// <returns>IPagedList<KnowledgebaseArticle></returns>
         public virtual async Task<IPagedList<KnowledgebaseArticle>> GetRelatedKnowledgebaseArticles(string articleId, int pageIndex = 0, int pageSize = int.MaxValue)
         {
             var article = await GetKnowledgebaseArticle(articleId);
@@ -574,7 +570,7 @@ namespace Grand.Business.Cms.Services
         {
             var query = from c in _articleCommentRepository.Table
                         orderby c.CreatedOnUtc
-                        where (customerId == "" || c.CustomerId == customerId)
+                        where customerId == "" || c.CustomerId == customerId
                         select c;
             return await Task.FromResult(query.ToList());
         }
@@ -592,7 +588,6 @@ namespace Grand.Business.Cms.Services
         /// <summary>
         /// Get article comments by identifiers
         /// </summary>
-        /// <param name="commentIds"Article comment identifiers</param>
         /// <returns>Article comments</returns>
         public virtual async Task<IList<KnowledgebaseArticleComment>> GetArticleCommentsByIds(string[] commentIds)
         {
@@ -605,7 +600,7 @@ namespace Grand.Business.Cms.Services
             var comments = query.ToList();
             //sort by passed identifiers
             var sortedComments = new List<KnowledgebaseArticleComment>();
-            foreach (string id in commentIds)
+            foreach (var id in commentIds)
             {
                 var comment = comments.Find(x => x.Id == id);
                 if (comment != null)

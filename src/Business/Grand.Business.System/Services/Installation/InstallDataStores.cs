@@ -1,10 +1,9 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Stores;
+﻿using Grand.Domain.Stores;
 using Microsoft.AspNetCore.Http;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallStores(
             string httpscheme, HostString host,

@@ -4,6 +4,7 @@ using Grand.Business.Core.Interfaces.Storage;
 using Grand.Web.Admin.Extensions;
 using Grand.Web.Admin.Interfaces;
 using Grand.Web.Admin.Models.Common;
+using Grand.Web.Common.Extensions;
 
 namespace Grand.Web.Admin.Services
 {
@@ -33,7 +34,7 @@ namespace Grand.Web.Admin.Services
             var model = new PictureModel {
                 Id = picture.Id,
                 ObjectId = objectId,
-                PictureUrl = picture != null ? await _pictureService.GetPictureUrl(picture) : null,
+                PictureUrl = await _pictureService.GetPictureUrl(picture),
                 AltAttribute = picture?.AltAttribute,
                 TitleAttribute = picture?.TitleAttribute,
                 Style = picture?.Style,

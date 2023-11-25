@@ -3,7 +3,7 @@ using Grand.Web.Models.Media;
 
 namespace Grand.Web.Models.ShoppingCart
 {
-    public partial class MiniShoppingCartModel : BaseModel
+    public class MiniShoppingCartModel : BaseModel
     {
         public MiniShoppingCartModel()
         {
@@ -13,6 +13,7 @@ namespace Grand.Web.Models.ShoppingCart
         public IList<ShoppingCartItemModel> Items { get; set; }
         public int TotalProducts { get; set; }
         public string SubTotal { get; set; }
+        public bool SubTotalIncludingTax { get; set; }
         public bool DisplayShoppingCartButton { get; set; }
         public bool DisplayCheckoutButton { get; set; }
         public bool CurrentCustomerIsGuest { get; set; }
@@ -22,7 +23,7 @@ namespace Grand.Web.Models.ShoppingCart
 
         #region Nested Classes
 
-        public partial class ShoppingCartItemModel : BaseEntityModel
+        public class ShoppingCartItemModel : BaseEntityModel
         {
             public ShoppingCartItemModel()
             {

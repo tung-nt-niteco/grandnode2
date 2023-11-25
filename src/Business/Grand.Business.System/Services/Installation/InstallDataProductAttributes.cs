@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Catalog;
+﻿using Grand.Domain.Catalog;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallProductAttributes()
         {
@@ -48,7 +47,7 @@ namespace Grand.Business.System.Services.Installation
                 {
                     Name = "Software",
                     SeName = "software"
-                },
+                }
             };
             await _productAttributeRepository.InsertAsync(productAttributes);
         }

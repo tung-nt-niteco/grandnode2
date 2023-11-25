@@ -8,12 +8,10 @@ using Grand.Web.Common.Security.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Tax.FixedRate.Models;
 
-namespace Tax.FixedRate.Controllers
+namespace Tax.FixedRate.Areas.Admin.Controllers
 {
-    [AuthorizeAdmin]
-    [Area("Admin")]
     [PermissionAuthorize(PermissionSystemName.TaxSettings)]
-    public class TaxFixedRateController : BasePluginController
+    public class TaxFixedRateController : BaseAdminPluginController
     {
         private readonly ITaxCategoryService _taxCategoryService;
         private readonly ISettingService _settingService;
@@ -51,18 +49,19 @@ namespace Tax.FixedRate.Controllers
         [HttpPost]
         public async Task<IActionResult> TaxRateUpdate(FixedTaxRateModel model)
         {
-            string taxCategoryId = model.TaxCategoryId;
-            double rate = model.Rate;
+            var taxCategoryId = model.TaxCategoryId;
+            var rate = model.Rate;
 
-            await _settingService.SetSetting(string.Format("Tax.TaxProvider.FixedRate.TaxCategoryId{0}", taxCategoryId), new FixedTaxRate() { Rate = rate });
+            await _settingService.SetSetting($"Tax.TaxProvider.FixedRate.TaxCategoryId{taxCategoryId}", new FixedTaxRate() { Rate = rate });
 
             return new JsonResult("");
         }
 
         [NonAction]
-        protected double GetTaxRate(string taxCategoryId)
+        private double GetTaxRate(string taxCategoryId)
         {
-            var rate = _settingService.GetSettingByKey<FixedTaxRate>(string.Format("Tax.TaxProvider.FixedRate.TaxCategoryId{0}", taxCategoryId))?.Rate;
+            var rate = _settingService.GetSettingByKey<FixedTaxRate>(
+                $"Tax.TaxProvider.FixedRate.TaxCategoryId{taxCategoryId}")?.Rate;
             return rate ?? 0;
         }
     }

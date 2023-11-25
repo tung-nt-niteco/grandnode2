@@ -9,7 +9,7 @@ namespace Grand.Business.System.Services.Installation
     /// <summary>
     /// Translation service for installation process
     /// </summary>
-    public partial class InstallationLocalizedService : IInstallationLocalizedService
+    public class InstallationLocalizedService : IInstallationLocalizedService
     {
         /// <summary>
         /// Available languages
@@ -20,12 +20,7 @@ namespace Grand.Business.System.Services.Installation
         /// Available collation
         /// </summary>
         private IList<InstallationCollation> _availableCollation;
-
-
-        public InstallationLocalizedService()
-        {
-
-        }
+        
         /// <summary>
         /// Get locale resource value
         /// </summary>
@@ -42,11 +37,9 @@ namespace Grand.Business.System.Services.Installation
                 .Select(r => r.Value)
                 .FirstOrDefault();
 
-            if (string.IsNullOrEmpty(resourceValue))
+            return string.IsNullOrEmpty(resourceValue) ?
                 //return name
-                return resourceName;
-
-            return resourceValue;
+                resourceName : resourceValue;
         }
 
         /// <summary>
@@ -98,11 +91,11 @@ namespace Grand.Business.System.Services.Installation
 
                 var languageNode = xmlDocument.SelectSingleNode(@"//Language");
 
-                if (languageNode == null || languageNode.Attributes == null)
+                if (languageNode?.Attributes == null)
                     continue;
 
                 //get language friendly name
-                var languageName = languageNode.Attributes["Name"].InnerText.Trim();
+                var languageName = languageNode.Attributes["Name"]?.InnerText.Trim();
 
                 //is default
                 var isDefaultAttribute = languageNode.Attributes["IsDefault"];
@@ -117,7 +110,7 @@ namespace Grand.Business.System.Services.Installation
                     Code = languageCode,
                     Name = languageName,
                     IsDefault = isDefault,
-                    IsRightToLeft = isRightToLeft,
+                    IsRightToLeft = isRightToLeft
                 };
 
                 //load resources
@@ -166,22 +159,22 @@ namespace Grand.Business.System.Services.Installation
 
             _availableCollation = new List<InstallationCollation>();
             var filePath = CommonPath.MapPath("App_Data/Resources/supportedcollation.xml");
-            var xmlDocument = new XmlDocument();
+            var xmlDocument = new XmlDocument { XmlResolver = null };
             xmlDocument.Load(File.OpenRead(filePath));
 
             var collation = xmlDocument.SelectNodes(@"//Collations/Collation");
 
-            foreach (XmlNode resNode in collation)
+            foreach (XmlNode resNode in collation!)
             {
-                var resNameAttribute = resNode.Attributes["Name"];
+                var resNameAttribute = resNode.Attributes!["Name"];
                 var resValueNode = resNode.SelectSingleNode("Value");
 
-                var resourceName = resNameAttribute.Value.Trim();
-                var resourceValue = resValueNode.InnerText.Trim();
+                var resourceName = resNameAttribute!.Value.Trim();
+                var resourceValue = resValueNode!.InnerText.Trim();
 
                 _availableCollation.Add(new InstallationCollation() {
                     Name = resourceName,
-                    Value = resourceValue,
+                    Value = resourceValue
                 });
             }
 

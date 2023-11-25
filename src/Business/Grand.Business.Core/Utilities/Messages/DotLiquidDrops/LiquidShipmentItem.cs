@@ -7,7 +7,7 @@ using System.Net;
 
 namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
 {
-    public partial class LiquidShipmentItem : Drop
+    public class LiquidShipmentItem : Drop
     {
         private readonly ShipmentItem _shipmentItem;
         private readonly Shipment _shipment;
@@ -32,7 +32,7 @@ namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
 
         public string ProductName {
             get {
-                string name = "";
+                var name = "";
                 if (_product != null)
                     name = WebUtility.HtmlEncode(_product.Name);
 
@@ -48,7 +48,7 @@ namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
 
         public string AttributeDescription {
             get {
-                string attDesc = "";
+                var attDesc = "";
 
                 if (_orderItem != null)
                     attDesc = _orderItem.AttributeDescription;

@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Grand.Web.Admin.Models.Catalog
 {
-    public partial class ProductListModel : BaseModel
+    public class ProductListModel : BaseModel
     {
         public ProductListModel()
         {
@@ -45,8 +45,6 @@ namespace Grand.Web.Admin.Models.Catalog
         [GrandResourceDisplayName("Admin.Catalog.Products.List.GoDirectlyToSku")]
         
         public string GoDirectlyToSku { get; set; }
-
-        public bool IsLoggedInAsVendor { get; set; }
 
         public IList<SelectListItem> AvailableStores { get; set; }
         public IList<SelectListItem> AvailableWarehouses { get; set; }

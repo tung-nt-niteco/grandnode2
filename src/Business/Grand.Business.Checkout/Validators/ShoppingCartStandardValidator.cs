@@ -39,16 +39,16 @@ namespace Grand.Business.Checkout.Validators
                     context.AddFailure(translationService.GetResource("ShoppingCart.ProductUnpublished"));
                 }
 
-                //disabled "add to cart" button
-                if (value.ShoppingCartItem.ShoppingCartTypeId == ShoppingCartType.ShoppingCart && value.Product.DisableBuyButton)
+                switch (value.ShoppingCartItem.ShoppingCartTypeId)
                 {
-                    context.AddFailure(translationService.GetResource("ShoppingCart.BuyingDisabled"));
-                }
-
-                //disabled "add to wishlist" button
-                if (value.ShoppingCartItem.ShoppingCartTypeId == ShoppingCartType.Wishlist && value.Product.DisableWishlistButton)
-                {
-                    context.AddFailure(translationService.GetResource("ShoppingCart.WishlistDisabled"));
+                    //disabled "add to cart" button
+                    case ShoppingCartType.ShoppingCart when value.Product.DisableBuyButton:
+                        context.AddFailure(translationService.GetResource("ShoppingCart.BuyingDisabled"));
+                        break;
+                    //disabled "add to wishlist" button
+                    case ShoppingCartType.Wishlist when value.Product.DisableWishlistButton:
+                        context.AddFailure(translationService.GetResource("ShoppingCart.WishlistDisabled"));
+                        break;
                 }
 
                 //call for price
@@ -60,7 +60,7 @@ namespace Grand.Business.Checkout.Validators
                 //customer entered price
                 if (value.Product.EnteredPrice)
                 {
-                    var shoppingCartItemEnteredPrice = value.ShoppingCartItem.EnteredPrice.HasValue ? value.ShoppingCartItem.EnteredPrice.Value : 0;
+                    var shoppingCartItemEnteredPrice = value.ShoppingCartItem.EnteredPrice ?? 0;
                     if (shoppingCartItemEnteredPrice < value.Product.MinEnteredPrice ||
                         shoppingCartItemEnteredPrice > value.Product.MaxEnteredPrice)
                     {
@@ -71,7 +71,7 @@ namespace Grand.Business.Checkout.Validators
                 }
 
                 //availability dates
-                bool availableStartDateError = false;
+                var availableStartDateError = false;
                 if (value.Product.AvailableStartDateTimeUtc.HasValue)
                 {
                     DateTime now = DateTime.UtcNow;
@@ -82,7 +82,9 @@ namespace Grand.Business.Checkout.Validators
                         availableStartDateError = true;
                     }
                 }
-                if (value.Product.AvailableEndDateTimeUtc.HasValue && !availableStartDateError && value.ShoppingCartItem.ShoppingCartTypeId == ShoppingCartType.ShoppingCart)
+
+                if (!value.Product.AvailableEndDateTimeUtc.HasValue || availableStartDateError ||
+                    value.ShoppingCartItem.ShoppingCartTypeId != ShoppingCartType.ShoppingCart) return;
                 {
                     DateTime now = DateTime.UtcNow;
                     DateTime availableEndDateTime = DateTime.SpecifyKind(value.Product.AvailableEndDateTimeUtc.Value, DateTimeKind.Utc);

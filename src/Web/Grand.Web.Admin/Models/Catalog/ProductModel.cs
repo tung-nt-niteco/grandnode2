@@ -9,7 +9,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Grand.Web.Admin.Models.Catalog
 {
-    public partial class ProductModel : BaseEntityModel, ILocalizedModel<ProductLocalizedModel>, IGroupLinkModel, IStoreLinkModel
+    public class ProductModel : BaseEntityModel, ILocalizedModel<ProductLocalizedModel>, IGroupLinkModel, IStoreLinkModel
     {
         public ProductModel()
         {
@@ -388,9 +388,6 @@ namespace Grand.Web.Admin.Models.Catalog
         [UIHint("Stores")]
         public string[] Stores { get; set; }
 
-        //vendor
-        public bool IsLoggedInAsVendor { get; set; }
-
         //product attributes
         public IList<SelectListItem> AvailableProductAttributes { get; set; }
 
@@ -411,7 +408,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
         #region Nested classes
 
-        public partial class AddProductModel : BaseModel
+        public class AddProductModel : BaseModel
         {
             public AddProductModel()
             {
@@ -442,18 +439,13 @@ namespace Grand.Web.Admin.Models.Catalog
             public IList<SelectListItem> AvailableStores { get; set; }
             public IList<SelectListItem> AvailableVendors { get; set; }
             public IList<SelectListItem> AvailableProductTypes { get; set; }
-
-            //vendor
-            public bool IsLoggedInAsVendor { get; set; }
         }
-
-
-        public partial class AddRequiredProductModel : AddProductModel 
+        public class AddRequiredProductModel : AddProductModel 
         {
             
         }
 
-        public partial class AddProductSpecificationAttributeModel : BaseModel
+        public class AddProductSpecificationAttributeModel : BaseModel
         {
             public AddProductSpecificationAttributeModel()
             {
@@ -492,7 +484,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public IList<SelectListItem> AvailableOptions { get; set; }
         }
 
-        public partial class ProductPictureModel : BaseEntityModel, ILocalizedModel<ProductPictureModel.ProductPictureLocalizedModel>
+        public class ProductPictureModel : BaseEntityModel, ILocalizedModel<ProductPictureModel.ProductPictureLocalizedModel>
         {
             public ProductPictureModel()
             {
@@ -525,7 +517,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
             public IList<ProductPictureLocalizedModel> Locales { get; set; }
 
-            public partial class ProductPictureLocalizedModel : ILocalizedModelLocal
+            public class ProductPictureLocalizedModel : ILocalizedModelLocal
             {
                 public string LanguageId { get; set; }
 
@@ -539,7 +531,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
         }
 
-        public partial class ProductCategoryModel : BaseEntityModel
+        public class ProductCategoryModel : BaseEntityModel
         {
             [GrandResourceDisplayName("Admin.Catalog.Products.Categories.Fields.Category")]
             public string Category { get; set; }
@@ -555,7 +547,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public int DisplayOrder { get; set; }
         }
 
-        public partial class ProductCollectionModel : BaseEntityModel
+        public class ProductCollectionModel : BaseEntityModel
         {
             [GrandResourceDisplayName("Admin.Catalog.Products.Collections.Fields.Collection")]
             public string Collection { get; set; }
@@ -571,7 +563,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public int DisplayOrder { get; set; }
         }
 
-        public partial class RelatedProductModel : BaseEntityModel
+        public class RelatedProductModel : BaseEntityModel
         {
             public string ProductId1 { get; set; }
             public string ProductId2 { get; set; }
@@ -582,13 +574,13 @@ namespace Grand.Web.Admin.Models.Catalog
             [GrandResourceDisplayName("Admin.Catalog.Products.RelatedProducts.Fields.DisplayOrder")]
             public int DisplayOrder { get; set; }
         }
-        public partial class AddRelatedProductModel : AddProductModel
+        public class AddRelatedProductModel : AddProductModel
         {
             public string ProductId { get; set; }
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class SimilarProductModel : BaseEntityModel
+        public class SimilarProductModel : BaseEntityModel
         {
             public string ProductId1 { get; set; }
             public string ProductId2 { get; set; }
@@ -600,14 +592,14 @@ namespace Grand.Web.Admin.Models.Catalog
             public int DisplayOrder { get; set; }
         }
 
-        public partial class AddSimilarProductModel : AddProductModel
+        public class AddSimilarProductModel : AddProductModel
         {
             public string ProductId { get; set; }
 
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class BundleProductModel : BaseEntityModel
+        public class BundleProductModel : BaseEntityModel
         {
             public string ProductBundleId { get; set; }
             public string ProductId { get; set; }
@@ -622,14 +614,14 @@ namespace Grand.Web.Admin.Models.Catalog
             public int DisplayOrder { get; set; }
         }
 
-        public partial class AddBundleProductModel : AddProductModel
+        public class AddBundleProductModel : AddProductModel
         {
             public string ProductId { get; set; }
 
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class AssociatedProductModel : BaseEntityModel
+        public class AssociatedProductModel : BaseEntityModel
         {
             public string ProductId { get; set; }
             [GrandResourceDisplayName("Admin.Catalog.Products.AssociatedProducts.Fields.Product")]
@@ -638,14 +630,14 @@ namespace Grand.Web.Admin.Models.Catalog
             public int DisplayOrder { get; set; }
         }
 
-        public partial class AddAssociatedProductModel : AddProductModel
+        public class AddAssociatedProductModel : AddProductModel
         {
             public string ProductId { get; set; }
 
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class CrossSellProductModel : BaseEntityModel
+        public class CrossSellProductModel : BaseEntityModel
         {
             public string ProductId { get; set; }            
 
@@ -653,35 +645,35 @@ namespace Grand.Web.Admin.Models.Catalog
             public string Product2Name { get; set; }
         }
 
-        public partial class AddCrossSellProductModel : AddProductModel
+        public class AddCrossSellProductModel : AddProductModel
         {
             public string ProductId { get; set; }
 
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class RecommendedProductModel : BaseEntityModel
+        public class RecommendedProductModel : BaseEntityModel
         {
             public string ProductId { get; set; }
 
             [GrandResourceDisplayName("Admin.Catalog.Products.Recommended.Fields.Product")]
             public string Product2Name { get; set; }
         }
-        public partial class AddRecommendedProductModel : AddProductModel
+        public class AddRecommendedProductModel : AddProductModel
         {
             public string ProductId { get; set; }
 
             public string[] SelectedProductIds { get; set; }
         }
 
-        public partial class ProductPriceModel : BaseEntityModel
+        public class ProductPriceModel : BaseEntityModel
         {
             public string CurrencyCode { get; set; }
 
             public double Price { get; set; }
         }
 
-        public partial class TierPriceModel : BaseEntityModel
+        public class TierPriceModel : BaseEntityModel
         {
 
             public TierPriceModel()
@@ -722,7 +714,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
         }
 
-        public partial class ProductWarehouseInventoryModel : BaseModel
+        public class ProductWarehouseInventoryModel : BaseModel
         {
             [GrandResourceDisplayName("Admin.Catalog.Products.ProductWarehouseInventory.Fields.Warehouse")]
             public string WarehouseId { get; set; }
@@ -737,7 +729,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public int ReservedQuantity { get; set; }
 
         }
-        public partial class ReservationModel : BaseEntityModel
+        public class ReservationModel : BaseEntityModel
         {
             public string ReservationId { get; set; }
             public DateTime Date { get; set; }
@@ -748,7 +740,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public string Duration { get; set; }
         }
 
-        public partial class BidModel : BaseEntityModel
+        public class BidModel : BaseEntityModel
         {
             public string ProductId { get; set; }
             public string BidId { get; set; }
@@ -759,7 +751,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public string OrderId { get; set; }
         }
 
-        public partial class GenerateCalendarModel : BaseModel
+        public class GenerateCalendarModel : BaseModel
         {
 
             public GenerateCalendarModel()
@@ -824,7 +816,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
         }
 
-        public partial class ProductAttributeMappingModel : BaseEntityModel
+        public class ProductAttributeMappingModel : BaseEntityModel
         {
             public ProductAttributeMappingModel()
             {
@@ -887,7 +879,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public bool ConditionAllowed { get; set; }
             public string ConditionString { get; set; }
         }
-        public partial class ProductAttributeValueListModel : BaseModel
+        public class ProductAttributeValueListModel : BaseModel
         {
             public string ProductId { get; set; }
 
@@ -898,7 +890,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public string ProductAttributeName { get; set; }
         }
 
-        public partial class ProductAttributeValueModel : BaseEntityModel, ILocalizedModel<ProductAttributeValueLocalizedModel>
+        public class ProductAttributeValueModel : BaseEntityModel, ILocalizedModel<ProductAttributeValueLocalizedModel>
         {
             public ProductAttributeValueModel()
             {
@@ -967,7 +959,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
             #region Nested classes
 
-            public partial class AssociateProductToAttributeValueModel : AddProductModel
+            public class AssociateProductToAttributeValueModel : AddProductModel
             {
                 public string AssociatedToProductId { get; set; }
             }
@@ -975,7 +967,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
             #endregion
         }
-        public partial class ActivityLogModel : BaseEntityModel
+        public class ActivityLogModel : BaseEntityModel
         {
             [GrandResourceDisplayName("Admin.Catalog.Products.ActivityLog.ActivityLogType")]
             public string ActivityLogTypeName { get; set; }
@@ -987,7 +979,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public string CustomerId { get; set; }
             public string CustomerEmail { get; set; }
         }
-        public partial class ProductAttributeValueLocalizedModel : ILocalizedModelLocal
+        public class ProductAttributeValueLocalizedModel : ILocalizedModelLocal
         {
             public string LanguageId { get; set; }
 
@@ -995,7 +987,7 @@ namespace Grand.Web.Admin.Models.Catalog
 
             public string Name { get; set; }
         }
-        public partial class ProductAttributeCombinationModel : BaseEntityModel
+        public class ProductAttributeCombinationModel : BaseEntityModel
         {
             public string ProductId { get; set; }
 
@@ -1027,7 +1019,7 @@ namespace Grand.Web.Admin.Models.Catalog
             public int NotifyAdminForQuantityBelow { get; set; }
 
         }
-        public partial class ProductAttributeCombinationTierPricesModel : BaseEntityModel
+        public class ProductAttributeCombinationTierPricesModel : BaseEntityModel
         {
             public string StoreId { get; set; }
             public string Store { get; set; }
@@ -1052,7 +1044,7 @@ namespace Grand.Web.Admin.Models.Catalog
         #endregion
     }
 
-    public partial class ProductLocalizedModel : ILocalizedModelLocal, ISlugModelLocal
+    public class ProductLocalizedModel : ILocalizedModelLocal, ISlugModelLocal
     {
         public string LanguageId { get; set; }
 

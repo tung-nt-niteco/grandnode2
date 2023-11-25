@@ -2,7 +2,7 @@
 
 namespace Grand.Web.Models.ShoppingCart
 {
-    public partial class OrderTotalsModel : BaseModel
+    public class OrderTotalsModel : BaseModel
     {
         public OrderTotalsModel()
         {
@@ -13,6 +13,7 @@ namespace Grand.Web.Models.ShoppingCart
         public bool IsEditable { get; set; }
 
         public string SubTotal { get; set; }
+        public bool SubTotalIncludingTax { get; set; }
         public double SubTotalValue { get; set; }
 
         public string SubTotalDiscount { get; set; }
@@ -48,13 +49,13 @@ namespace Grand.Web.Models.ShoppingCart
 
         #region Nested classes
 
-        public partial class TaxRate: BaseModel
+        public class TaxRate: BaseModel
         {
             public string Rate { get; set; }
             public string Value { get; set; }
         }
 
-        public partial class GiftVoucher : BaseEntityModel
+        public class GiftVoucher : BaseEntityModel
         {
             public string CouponCode { get; set; }
             public string Amount { get; set; }

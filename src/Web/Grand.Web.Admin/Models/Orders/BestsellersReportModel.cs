@@ -5,7 +5,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Grand.Web.Admin.Models.Orders
 {
-    public partial class BestsellersReportModel : BaseModel
+    public class BestsellersReportModel : BaseModel
     {
         public BestsellersReportModel()
         {
@@ -44,6 +44,5 @@ namespace Grand.Web.Admin.Models.Orders
         public IList<SelectListItem> AvailablePaymentStatuses { get; set; }
         public IList<SelectListItem> AvailableCountries { get; set; }
         public IList<SelectListItem> AvailableVendors { get; set; }
-        public bool IsLoggedInAsVendor { get; set; }
     }
 }

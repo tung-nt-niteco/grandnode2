@@ -4,8 +4,8 @@ using Grand.Domain.Customers;
 using Grand.Domain.Data;
 using Grand.Domain.News;
 using Grand.Infrastructure;
+using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Extensions;
-using Grand.SharedKernel.Extensions;
 using MediatR;
 
 namespace Grand.Business.Cms.Services
@@ -13,25 +13,27 @@ namespace Grand.Business.Cms.Services
     /// <summary>
     /// News service
     /// </summary>
-    public partial class NewsService : INewsService
+    public class NewsService : INewsService
     {
         #region Fields
 
         private readonly IRepository<NewsItem> _newsItemRepository;
         private readonly IMediator _mediator;
         private readonly IWorkContext _workContext;
-
+        private readonly AccessControlConfig _accessControlConfig;
+        
         #endregion
 
         #region Ctor
 
         public NewsService(IRepository<NewsItem> newsItemRepository,
             IMediator mediator,
-            IWorkContext workContext)
+            IWorkContext workContext, AccessControlConfig accessControlConfig)
         {
             _newsItemRepository = newsItemRepository;
             _mediator = mediator;
             _workContext = workContext;
+            _accessControlConfig = accessControlConfig;
         }
 
         #endregion
@@ -55,16 +57,17 @@ namespace Grand.Business.Cms.Services
         /// <param name="storeId">Store identifier; 0 if you want to get all records</param>
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
+        /// <param name="ignoreAcl"></param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
         /// <param name="newsTitle">News title</param>
         /// <returns>News items</returns>
         public virtual async Task<IPagedList<NewsItem>> GetAllNews(string storeId = "",
-            int pageIndex = 0, int pageSize = int.MaxValue, bool ignorAcl = false, bool showHidden = false, string newsTitle = "")
+            int pageIndex = 0, int pageSize = int.MaxValue, bool ignoreAcl = false, bool showHidden = false, string newsTitle = "")
         {
             var query = from p in _newsItemRepository.Table
                         select p;
 
-            if (!String.IsNullOrWhiteSpace(newsTitle))
+            if (!string.IsNullOrWhiteSpace(newsTitle))
                 query = query.Where(n => n.Title != null && n.Title.ToLower().Contains(newsTitle.ToLower()));
 
             if (!showHidden)
@@ -75,10 +78,10 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(n => !n.EndDateUtc.HasValue || n.EndDateUtc >= utcNow);
             }
 
-            if ((!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations) ||
-                    (!ignorAcl && !CommonHelper.IgnoreAcl))
+            if ((!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations) ||
+                    (!ignoreAcl && !_accessControlConfig.IgnoreAcl))
             {
-                if (!ignorAcl && !CommonHelper.IgnoreAcl)
+                if (!ignoreAcl && !_accessControlConfig.IgnoreAcl)
                 {
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
                     query = from p in query
@@ -86,7 +89,7 @@ namespace Grand.Business.Cms.Services
                             select p;
                 }
                 //Store acl
-                if (!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations)
+                if (!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations)
                 {
                     query = from p in query
                             where !p.LimitedToStores || p.Stores.Contains(storeId)
@@ -154,7 +157,7 @@ namespace Grand.Business.Cms.Services
 
             var query2 = from c in query
                          orderby c.CreatedOnUtc
-                         where (customerId == "" || c.CustomerId == customerId)
+                         where customerId == "" || c.CustomerId == customerId
                          select c;
 
             return await Task.FromResult(query2.ToList());

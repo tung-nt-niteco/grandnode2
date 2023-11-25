@@ -4,7 +4,7 @@ using Grand.Web.Models.Media;
 
 namespace Grand.Web.Models.ShoppingCart
 {
-    public partial class AddToCartModel : BaseModel
+    public class AddToCartModel : BaseModel
     {
         public AddToCartModel()
         {
@@ -26,6 +26,7 @@ namespace Grand.Web.Models.ShoppingCart
 
         public int TotalItems { get; set; }
         public string SubTotal { get; set; }
+        public bool SubTotalIncludingTax { get; set; }
         public string SubTotalDiscount { get; set; }
         public double DecimalSubTotal { get; set; }
 

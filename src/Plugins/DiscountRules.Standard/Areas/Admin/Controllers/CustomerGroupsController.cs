@@ -1,4 +1,4 @@
-﻿using DiscountRules.CustomerGroups.Models;
+﻿using DiscountRules.Standard.Models;
 using Grand.Business.Core.Interfaces.Catalog.Discounts;
 using Grand.Business.Core.Interfaces.Common.Directory;
 using Grand.Business.Core.Interfaces.Common.Security;
@@ -9,11 +9,9 @@ using Grand.Web.Common.Filters;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 
-namespace DiscountRules.CustomerGroups.Controllers
+namespace DiscountRules.Standard.Areas.Admin.Controllers
 {
-    [Area("Admin")]
-    [AuthorizeAdmin]
-    public class CustomerGroupsController : BasePluginController
+    public class CustomerGroupsController : BaseAdminPluginController
     {
         private readonly IDiscountService _discountService;
         private readonly IGroupService _groupService;
@@ -46,7 +44,7 @@ namespace DiscountRules.CustomerGroups.Controllers
                     return Content("Failed to load requirement.");
             }
 
-            var model = new RequirementModel {
+            var model = new RequirementCustomerGroupsModel {
                 RequirementId = !string.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "",
                 DiscountId = discountId,
                 CustomerGroupId = discountRequirement?.Metadata
@@ -55,12 +53,13 @@ namespace DiscountRules.CustomerGroups.Controllers
             //customer groups
             model.AvailableCustomerGroups.Add(new SelectListItem { Text = "Select customer group", Value = "" });
             foreach (var cr in await _groupService.GetAllCustomerGroups(showHidden: true))
-                model.AvailableCustomerGroups.Add(new SelectListItem { Text = cr.Name, Value = cr.Id.ToString(), Selected = discountRequirement != null && cr.Id == discountRequirement?.Metadata });
+                model.AvailableCustomerGroups.Add(new SelectListItem { Text = cr.Name, Value = cr.Id, Selected = discountRequirement != null && cr.Id == discountRequirement?.Metadata });
 
             //add a prefix
-            ViewData.TemplateInfo.HtmlFieldPrefix = string.Format("DiscountRulesCustomerGroups{0}", !String.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "");
+            ViewData.TemplateInfo.HtmlFieldPrefix =
+                $"DiscountRulesCustomerGroups{(!string.IsNullOrEmpty(discountRequirementId) ? discountRequirementId : "")}";
 
-            return View(model);
+            return View((object)model);
         }
 
         [HttpPost]

@@ -2,8 +2,8 @@ using Grand.Business.Core.Interfaces.Cms;
 using Grand.Domain;
 using Grand.Domain.Blogs;
 using Grand.Domain.Data;
+using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Extensions;
-using Grand.SharedKernel.Extensions;
 using MediatR;
 
 namespace Grand.Business.Cms.Services
@@ -11,7 +11,7 @@ namespace Grand.Business.Cms.Services
     /// <summary>
     /// Blog service
     /// </summary>
-    public partial class BlogService : IBlogService
+    public class BlogService : IBlogService
     {
         #region Fields
 
@@ -19,6 +19,7 @@ namespace Grand.Business.Cms.Services
         private readonly IRepository<BlogComment> _blogCommentRepository;
         private readonly IRepository<BlogCategory> _blogCategoryRepository;
         private readonly IRepository<BlogProduct> _blogProductRepository;
+        private readonly AccessControlConfig _accessControlConfig;
         private readonly IMediator _mediator;
 
         #endregion
@@ -29,13 +30,14 @@ namespace Grand.Business.Cms.Services
             IRepository<BlogComment> blogCommentRepository,
             IRepository<BlogCategory> blogCategoryRepository,
             IRepository<BlogProduct> blogProductRepository,
-            IMediator mediator)
+            IMediator mediator, AccessControlConfig accessControlConfig)
         {
             _blogPostRepository = blogPostRepository;
             _blogCommentRepository = blogCommentRepository;
             _blogCategoryRepository = blogCategoryRepository;
             _blogProductRepository = blogProductRepository;
             _mediator = mediator;
+            _accessControlConfig = accessControlConfig;
         }
 
         #endregion
@@ -56,13 +58,14 @@ namespace Grand.Business.Cms.Services
         /// Gets all blog posts
         /// </summary>
         /// <param name="storeId">The store identifier; pass "" to load all records</param>
-        /// <param name="languageId">Language identifier; 0 if you want to get all records</param>
         /// <param name="dateFrom">Filter by created date; null if you want to get all records</param>
         /// <param name="dateTo">Filter by created date; null if you want to get all records</param>
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
+        /// <param name="tag">Tag</param>
         /// <param name="blogPostName">Blog post name</param>
+        /// <param name="categoryId">Category ident</param>
         /// <returns>Blog posts</returns>
         public virtual async Task<IPagedList<BlogPost>> GetAllBlogPosts(string storeId = "",
             DateTime? dateFrom = null, DateTime? dateTo = null,
@@ -82,7 +85,7 @@ namespace Grand.Business.Cms.Services
                 }
             }
 
-            if (!String.IsNullOrWhiteSpace(blogPostName))
+            if (!string.IsNullOrWhiteSpace(blogPostName))
             {
                 query = query.Where
                     (b => (b.Title != null && b.Title.ToLower().Contains(blogPostName.ToLower())) ||
@@ -100,11 +103,11 @@ namespace Grand.Business.Cms.Services
                 query = query.Where(b => !b.EndDateUtc.HasValue || b.EndDateUtc >= utcNow);
             }
 
-            if (!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations)
+            if (!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations)
             {
                 query = query.Where(b => b.Stores.Contains(storeId) || !b.LimitedToStores);
             }
-            if (!(String.IsNullOrEmpty(tag)))
+            if (!string.IsNullOrEmpty(tag))
             {
                 query = query.Where(x => x.Tags.Contains(tag));
             }
@@ -120,7 +123,6 @@ namespace Grand.Business.Cms.Services
         /// Gets all blog posts
         /// </summary>
         /// <param name="storeId">The store identifier; pass "" to load all records</param>
-        /// <param name="languageId">Language identifier. 0 if you want to get all news</param>
         /// <param name="tag">Tag</param>
         /// <param name="pageIndex">Page index</param>
         /// <param name="pageSize">Page size</param>
@@ -134,13 +136,7 @@ namespace Grand.Business.Cms.Services
 
             //we load all records and only then filter them by tag
             var blogPostsAll = await GetAllBlogPosts(storeId: storeId, showHidden: showHidden, tag: tag);
-            var taggedBlogPosts = new List<BlogPost>();
-            foreach (var blogPost in blogPostsAll)
-            {
-                var tags = blogPost.ParseTags();
-                if (!String.IsNullOrEmpty(tags.FirstOrDefault(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase))))
-                    taggedBlogPosts.Add(blogPost);
-            }
+            var taggedBlogPosts = (from blogPost in blogPostsAll let tags = blogPost.ParseTags() where !string.IsNullOrEmpty(tags.FirstOrDefault(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase))) select blogPost).ToList();
 
             //server-side paging
             return new PagedList<BlogPost>(taggedBlogPosts, pageIndex, pageSize);
@@ -150,7 +146,6 @@ namespace Grand.Business.Cms.Services
         /// Gets all blog post tags
         /// </summary>
         /// <param name="storeId">The store identifier; pass "" to load all records</param>
-        /// <param name="languageId">Language identifier. 0 if you want to get all news</param>
         /// <param name="showHidden">A value indicating whether to show hidden records</param>
         /// <returns>Blog post tags</returns>
         public virtual async Task<IList<BlogPostTag>> GetAllBlogPostTags(string storeId, bool showHidden = false)
@@ -161,7 +156,7 @@ namespace Grand.Business.Cms.Services
             foreach (var blogPost in blogPosts)
             {
                 var tags = blogPost.ParseTags();
-                foreach (string tag in tags)
+                foreach (var tag in tags)
                 {
                     var foundBlogPostTag = blogPostTags.Find(bpt => bpt.Name.Equals(tag, StringComparison.OrdinalIgnoreCase));
                     if (foundBlogPostTag == null)
@@ -229,6 +224,7 @@ namespace Grand.Business.Cms.Services
         /// Gets all comments
         /// </summary>
         /// <param name="customerId">Customer identifier; "" to load all records</param>
+        /// <param name="storeId">Store ident</param>
         /// <returns>Comments</returns>
         public virtual async Task<IList<BlogComment>> GetAllComments(string customerId, string storeId)
         {
@@ -259,7 +255,7 @@ namespace Grand.Business.Cms.Services
 
             return await Task.FromResult(query.ToList());
         }
-
+        /// <summary>
         /// Get blog comments by identifiers
         /// </summary>
         /// <param name="commentIds">Blog comment identifiers</param>
@@ -274,20 +270,14 @@ namespace Grand.Business.Cms.Services
                         select bc;
             var comments = query.ToList();
             //sort by passed identifiers
-            var sortedComments = new List<BlogComment>();
-            foreach (string id in commentIds)
-            {
-                var comment = comments.Find(x => x.Id == id);
-                if (comment != null)
-                    sortedComments.Add(comment);
-            }
+            var sortedComments = commentIds.Select(id => comments.Find(x => x.Id == id)).Where(comment => comment != null).ToList();
             return await Task.FromResult(sortedComments);
         }
 
         /// <summary>
         /// Inserts a blog post comment
         /// </summary>
-        /// <param name="blogPost">Blog post comment</param>
+        /// <param name="blogComment">Blog post comment</param>
         public virtual async Task InsertBlogComment(BlogComment blogComment)
         {
             if (blogComment == null)
@@ -330,16 +320,16 @@ namespace Grand.Business.Cms.Services
         }
 
         /// <summary>
-        /// Get category by sename
+        /// Get category by se-name
         /// </summary>
-        /// <param name="blogCategorySeName">Blog category sename</param>
+        /// <param name="blogCategorySeName">Blog category se-name</param>
         /// <returns></returns>
         public virtual async Task<BlogCategory> GetBlogCategoryBySeName(string blogCategorySeName)
         {
             if (string.IsNullOrEmpty(blogCategorySeName))
                 throw new ArgumentNullException(nameof(blogCategorySeName));
 
-            return await Task.FromResult(_blogCategoryRepository.Table.Where(x => x.SeName == blogCategorySeName.ToLowerInvariant()).FirstOrDefault());
+            return await Task.FromResult(_blogCategoryRepository.Table.FirstOrDefault(x => x.SeName == blogCategorySeName.ToLowerInvariant()));
         }
 
         /// <summary>
@@ -351,7 +341,7 @@ namespace Grand.Business.Cms.Services
             var query = from c in _blogCategoryRepository.Table
                         select c;
 
-            if (!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations)
+            if (!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations)
             {
                 query = query.Where(b => b.Stores.Contains(storeId) || !b.LimitedToStores);
             }
@@ -441,7 +431,7 @@ namespace Grand.Business.Cms.Services
         /// <summary>
         /// Update an blog product
         /// </summary>
-        /// <param name="blogPostProduct">Blog product</param>
+        /// <param name="blogProduct">Blog product</param>
         public virtual async Task UpdateBlogProduct(BlogProduct blogProduct)
         {
             if (blogProduct == null)

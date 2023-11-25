@@ -1,4 +1,4 @@
-﻿using Grand.Business.Catalog.Services.ExportImport.Dto;
+﻿using Grand.Business.Core.Dto;
 using Grand.Business.Core.Extensions;
 using Grand.Business.Core.Interfaces.Catalog.Categories;
 using Grand.Business.Core.Interfaces.Common.Directory;
@@ -8,6 +8,7 @@ using Grand.Business.Core.Utilities.Common.Security;
 using Grand.Domain.Catalog;
 using Grand.Infrastructure;
 using Grand.Web.Admin.Extensions;
+using Grand.Web.Admin.Extensions.Mapping;
 using Grand.Web.Admin.Interfaces;
 using Grand.Web.Admin.Models.Catalog;
 using Grand.Web.Admin.Models.Common;
@@ -20,7 +21,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Grand.Web.Admin.Controllers
 {
     [PermissionAuthorize(PermissionSystemName.Categories)]
-    public partial class CategoryController : BaseAdminController
+    public class CategoryController : BaseAdminController
     {
         #region Fields
 
@@ -122,7 +123,7 @@ namespace Grand.Web.Admin.Controllers
             {
                 if (await _groupService.IsStaff(_workContext.CurrentCustomer))
                 {
-                    model.Stores = new string[] { _workContext.CurrentCustomer.StaffStoreId };
+                    model.Stores = new[] { _workContext.CurrentCustomer.StaffStoreId };
                 }
 
                 var category = await _categoryViewModelService.InsertCategoryModel(model);
@@ -147,7 +148,7 @@ namespace Grand.Web.Admin.Controllers
             if (await _groupService.IsStaff(_workContext.CurrentCustomer))
             {
                 if (!category.LimitedToStores || (category.LimitedToStores && category.Stores.Contains(_workContext.CurrentCustomer.StaffStoreId) && category.Stores.Count > 1))
-                    Warning(_translationService.GetResource("Admin.Catalog.Categories.Permisions"));
+                    Warning(_translationService.GetResource("Admin.Catalog.Categories.Permissions"));
                 else
                 {
                     if (!category.AccessToEntityByStore(_workContext.CurrentCustomer.StaffStoreId))
@@ -192,7 +193,7 @@ namespace Grand.Web.Admin.Controllers
             {
                 if (await _groupService.IsStaff(_workContext.CurrentCustomer))
                 {
-                    model.Stores = new string[] { _workContext.CurrentCustomer.StaffStoreId };
+                    model.Stores = new[] { _workContext.CurrentCustomer.StaffStoreId };
                 }
 
                 category = await _categoryViewModelService.UpdateCategoryModel(category, model);
@@ -295,7 +296,7 @@ namespace Grand.Web.Admin.Controllers
         {
             try
             {
-                var bytes = exportManager.Export(await _categoryService.GetAllCategories(showHidden: true, storeId: _workContext.CurrentCustomer.StaffStoreId));
+                var bytes = await exportManager.Export(await _categoryService.GetAllCategories(showHidden: true, storeId: _workContext.CurrentCustomer.StaffStoreId));
                 return File(bytes, "text/xls", "categories.xlsx");
             }
             catch (Exception exc)
@@ -309,13 +310,9 @@ namespace Grand.Web.Admin.Controllers
         [HttpPost]
         public async Task<IActionResult> ImportFromXlsx(IFormFile importexcelfile, [FromServices] IImportManager<CategoryDto> importManager)
         {
-            //a vendor and staff cannot import categories
-            if (_workContext.CurrentVendor != null || await _groupService.IsStaff(_workContext.CurrentCustomer))
-                return AccessDeniedView();
-
             try
             {
-                if (importexcelfile != null && importexcelfile.Length > 0)
+                if (importexcelfile is { Length: > 0 })
                 {
                     await importManager.Import(importexcelfile.OpenReadStream());
                 }
@@ -414,11 +411,9 @@ namespace Grand.Web.Admin.Controllers
 
                 return Content("");
             }
-            else
-            {
-                Error(ModelState);
-                return View(model);
-            }
+
+            Error(ModelState);
+            return View(model);
 
 
         }

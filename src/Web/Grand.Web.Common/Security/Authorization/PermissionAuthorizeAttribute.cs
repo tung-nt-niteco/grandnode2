@@ -15,7 +15,7 @@ namespace Grand.Web.Common.Security.Authorization
             Permission = permission;
         }
 
-        // Get or set the permision property by manipulating
+        // Get or set the permission property by manipulating
         public string Permission { get; set; }
 
         public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
@@ -33,12 +33,10 @@ namespace Grand.Web.Common.Security.Authorization
                 return;
 
             //authorize permission of access to the admin area
-            if (!await permissionService.Authorize(StandardPermission.AccessAdminPanel))
+            if (!await permissionService.Authorize(StandardPermission.ManageAccessAdminPanel))
                 context.Result = new RedirectToRouteResult("AdminLogin", new RouteValueDictionary());
             else
                 context.Result = new RedirectToActionResult("AccessDenied", "Home", new { pageUrl = context.HttpContext.Request.Path });
-
-            return;
         }
     }
 }

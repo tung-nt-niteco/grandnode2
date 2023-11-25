@@ -3,7 +3,7 @@ using Grand.Business.Core.Interfaces.ExportImport;
 using Grand.Business.Core.Utilities.ExportImport;
 using Grand.Domain.Orders;
 
-namespace Grand.Business.Checkout.Services.ExportImport
+namespace Grand.Business.Checkout.Services.ExportImpot
 {
     public class OrderSchemaProperty : ISchemaProperty<Order>
     {
@@ -14,7 +14,7 @@ namespace Grand.Business.Checkout.Services.ExportImport
             _countryService = countryService;
         }
 
-        public virtual PropertyByName<Order>[] GetProperties()
+        public virtual async Task<PropertyByName<Order>[]> GetProperties()
         {
             var properties = new[]
             {
@@ -53,7 +53,7 @@ namespace Grand.Business.Checkout.Services.ExportImport
                 new PropertyByName<Order>("BillingEmail", p=>p.BillingAddress?.Email),
                 new PropertyByName<Order>("BillingCompany", p=>p.BillingAddress?.Company),
                 new PropertyByName<Order>("BillingVatNumber", p=>p.BillingAddress?.VatNumber),
-                new PropertyByName<Order>("BillingCountry",p=>p.BillingAddress!=null ? (_countryService.GetCountryById(p.BillingAddress.CountryId)).Result?.Name : ""),
+                new PropertyByName<Order>("BillingCountry",p=>p.BillingAddress!=null ? _countryService.GetCountryById(p.BillingAddress.CountryId).Result?.Name : ""),
                 new PropertyByName<Order>("BillingCity", p=>p.BillingAddress?.City),
                 new PropertyByName<Order>("BillingAddress1",p=>p.BillingAddress?.Address1),
                 new PropertyByName<Order>("BillingAddress2", p=>p.BillingAddress?.Address2),
@@ -65,7 +65,7 @@ namespace Grand.Business.Checkout.Services.ExportImport
                 new PropertyByName<Order>("ShippingEmail", p=>p.ShippingAddress?.Email),
                 new PropertyByName<Order>("ShippingCompany", p=>p.ShippingAddress?.Company),
                 new PropertyByName<Order>("ShippingVatNumber", p=>p.ShippingAddress?.VatNumber),
-                new PropertyByName<Order>("ShippingCountry",p=>p.ShippingAddress!=null ? (_countryService.GetCountryById(p.ShippingAddress.CountryId)).Result?.Name : ""),
+                new PropertyByName<Order>("ShippingCountry",p=>p.ShippingAddress!=null ? _countryService.GetCountryById(p.ShippingAddress.CountryId).Result?.Name : ""),
                 new PropertyByName<Order>("ShippingCity", p=>p.ShippingAddress?.City),
                 new PropertyByName<Order>("ShippingAddress1", p=>p.ShippingAddress?.Address1),
                 new PropertyByName<Order>("ShippingAddress2", p=>p.ShippingAddress?.Address2),
@@ -73,7 +73,7 @@ namespace Grand.Business.Checkout.Services.ExportImport
                 new PropertyByName<Order>("ShippingPhoneNumber",p=>p.ShippingAddress?.PhoneNumber),
                 new PropertyByName<Order>("ShippingFaxNumber", p=>p.ShippingAddress?.FaxNumber)
             };
-            return properties;
+            return await Task.FromResult(properties);
         }
     }
 }

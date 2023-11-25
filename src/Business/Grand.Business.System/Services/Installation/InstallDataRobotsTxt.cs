@@ -1,10 +1,9 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Common;
+﻿using Grand.Domain.Common;
 using Grand.Domain.Stores;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallDataRobotsTxt(
             Store store)
@@ -50,7 +49,8 @@ Disallow: /subscribenewsletter/*
 Disallow: /page/authenticate
 Disallow: /uploadfileproductattribute
 Disallow: /uploadfilecheckoutattribute
-Disallow: /wishlist"
+Disallow: /wishlist
+Disallow: /quickview/*"
             };
 
             await _robotsTxtRepository.InsertAsync(robotsTxt);

@@ -8,7 +8,7 @@ using Grand.Api.Queries.Handlers.Common;
 using Grand.Api.Queries.Models.Common;
 using Grand.Infrastructure;
 using Grand.Infrastructure.Configuration;
-using Grand.Infrastructure.TypeSearchers;
+using Grand.Infrastructure.TypeSearch;
 using MediatR;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -20,7 +20,7 @@ using Microsoft.OData.ModelBuilder;
 
 namespace Grand.Api.Infrastructure
 {
-    public partial class ODataStartup : IStartupApplication
+    public class ODataStartup : IStartupApplication
     {
         public void Configure(IApplicationBuilder application, IWebHostEnvironment webHostEnvironment)
         {
@@ -73,7 +73,7 @@ namespace Grand.Api.Infrastructure
 
         private void RegisterDependencies(ODataConventionModelBuilder builder, BackendAPIConfig apiConfig)
         {
-            var typeFinder = new AppTypeSearcher();
+            var typeFinder = new TypeSearcher();
 
             //find dependency provided by other assemblies
             var dependencyInject = typeFinder.ClassesOfType<IDependencyEdmModel>();
@@ -81,19 +81,16 @@ namespace Grand.Api.Infrastructure
             //create and sort instances of dependency inject
             var instances = dependencyInject
                 .Select(di => (IDependencyEdmModel)Activator.CreateInstance(di))
-                .OrderBy(di => di.Order);
+                .OrderBy(di => di!.Order);
 
             //register all provided dependencies
             foreach (var dependencyRegistrar in instances)
-                dependencyRegistrar.Register(builder, apiConfig);
+                dependencyRegistrar!.Register(builder, apiConfig);
 
         }
 
         private void RegisterRequestHandler(IServiceCollection services)
         {
-
-            //Workaround - there is a problem with register generic type with IRequestHandler
-
             services.AddScoped(typeof(IRequestHandler<GetGenericQuery<CountryDto, Domain.Directory.Country>,
                 IQueryable<CountryDto>>), typeof(GetGenericQueryHandler<CountryDto, Domain.Directory.Country>));
 

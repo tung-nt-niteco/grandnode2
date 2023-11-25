@@ -10,7 +10,7 @@ using Grand.SharedKernel.Extensions;
 
 namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
 {
-    public partial class LiquidOrder : Drop
+    public class LiquidOrder : Drop
     {
         private readonly Order _order;
         private readonly Language _language;
@@ -328,10 +328,8 @@ namespace Grand.Business.Core.Utilities.Messages.DotLiquidDrops
             }
         }
 
-        public string RPTitle { get; set; }
-
         public string RPAmount { get; set; }
-
+        public string RPPoints { get; set; }
 
         public bool IsRecurring {
             get {

@@ -6,7 +6,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace Widgets.Slider.Models
 {
-    public partial class SlideModel : BaseEntityModel, ILocalizedModel<SlideLocalizedModel>, IStoreLinkModel
+    public class SlideModel : BaseEntityModel, ILocalizedModel<SlideLocalizedModel>, IStoreLinkModel
     {
         public SlideModel()
         {
@@ -55,9 +55,17 @@ namespace Widgets.Slider.Models
         [GrandResourceDisplayName("Widgets.Slider.Brand")]
         public string BrandId { get; set; }
 
+        [GrandResourceDisplayName("Widgets.Slider.StartDate")]
+        [UIHint("DateTimeNullable")]
+        public DateTime? StartDateUtc { get; set; }
+
+        [GrandResourceDisplayName("Widgets.Slider.EndDate")]
+        [UIHint("DateTimeNullable")]
+        public DateTime? EndDateUtc { get; set; }
+
     }
 
-    public partial class SlideLocalizedModel : ILocalizedModelLocal
+    public class SlideLocalizedModel : ILocalizedModelLocal
     {
         public string LanguageId { get; set; }
 

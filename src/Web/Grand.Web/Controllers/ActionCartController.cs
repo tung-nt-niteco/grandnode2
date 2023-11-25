@@ -9,12 +9,13 @@ using Grand.Domain.Catalog;
 using Grand.Domain.Common;
 using Grand.Domain.Orders;
 using Grand.Infrastructure;
+using Grand.Web.Common.Controllers;
 using Grand.Web.Common.Filters;
 using Grand.Web.Extensions;
 using Grand.Web.Features.Models.Products;
 using Grand.Web.Features.Models.ShoppingCart;
+using Grand.Web.Models.ShoppingCart;
 using MediatR;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using System.Globalization;
@@ -22,7 +23,7 @@ using System.Globalization;
 namespace Grand.Web.Controllers
 {
     [DenySystemAccount]
-    public partial class ActionCartController : BasePublicController
+    public class ActionCartController : BasePublicController
     {
         #region Fields
 
@@ -35,7 +36,6 @@ namespace Grand.Web.Controllers
         private readonly IShoppingCartValidator _shoppingCartValidator;
         private readonly ICustomerActivityService _customerActivityService;
         private readonly IMediator _mediator;
-
         private readonly ShoppingCartSettings _shoppingCartSettings;
 
         #endregion
@@ -67,44 +67,43 @@ namespace Grand.Web.Controllers
 
         #endregion
 
-        #region Methods
+        #region Private methods
 
-        protected IActionResult RedirectToProduct(Product product, ShoppingCartType cartType, int quantity)
+        private IActionResult RedirectToProduct(Product product, ShoppingCartType cartType, int quantity)
         {
             //we can't add grouped products 
             if (product.ProductTypeId == ProductType.GroupedProduct)
             {
                 return Json(new
                 {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
+                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
                 });
             }
 
-            //products with "minimum order quantity" more than a specified qty
-            if (cartType == ShoppingCartType.ShoppingCart && product.OrderMinimumQuantity > quantity)
+            switch (cartType)
             {
-                //we cannot add to the cart such products from category pages
-                return Json(new
-                {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
-                });
+                //products with "minimum order quantity" more than a specified qty
+                case ShoppingCartType.ShoppingCart when product.OrderMinimumQuantity > quantity:
+                    //we cannot add to the cart such products from category pages
+                    return Json(new
+                    {
+                        redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
+                    });
+                case ShoppingCartType.ShoppingCart when product.EnteredPrice:
+                    //cannot be added to the cart (requires a customer to enter price)
+                    return Json(new
+                    {
+                        redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
+                    });
             }
 
-            if (cartType == ShoppingCartType.ShoppingCart && product.EnteredPrice)
-            {
-                //cannot be added to the cart (requires a customer to enter price)
-                return Json(new
-                {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
-                });
-            }
             var allowedQuantities = product.ParseAllowedQuantities();
             if (cartType == ShoppingCartType.ShoppingCart && allowedQuantities.Length > 0)
             {
-                //cannot be added to the cart (requires a customer to select a quantity from dropdownlist)
+                //cannot be added to the cart (requires a customer to select a quantity from drop down list)
                 return Json(new
                 {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
+                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
                 });
             }
 
@@ -113,26 +112,75 @@ namespace Grand.Web.Controllers
                 //product has some attributes
                 return Json(new
                 {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
+                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
                 });
             }
 
             return null;
         }
 
-        protected string GetWarehouse(Product product)
+        private string GetWarehouse(Product product)
         {
             return product.UseMultipleWarehouses ? _workContext.CurrentStore.DefaultWarehouseId :
-               (string.IsNullOrEmpty(_workContext.CurrentStore.DefaultWarehouseId) ? product.WarehouseId : _workContext.CurrentStore.DefaultWarehouseId);
+               string.IsNullOrEmpty(_workContext.CurrentStore.DefaultWarehouseId) ? product.WarehouseId : _workContext.CurrentStore.DefaultWarehouseId;
         }
 
-        [HttpPost]
-        public virtual async Task<IActionResult> AddProductCatalog(string productId, int shoppingCartTypeId,
-            int quantity, bool forceredirection = false)
+        private IActionResult ReturnFailMessage(Product product, ShoppingCartType shoppingCartTypeId)
         {
-            var cartType = (ShoppingCartType)shoppingCartTypeId;
+            switch (product.ProductTypeId)
+            {
+                //you can't add group products
+                case ProductType.GroupedProduct:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Grouped products couldn't be added to the cart"
+                    });
+                //you can't add reservation product to wishlist
+                case ProductType.Reservation when shoppingCartTypeId == ShoppingCartType.Wishlist:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Reservation products couldn't be added to the wishlist"
+                    });
+                //you can't add auction product to wishlist
+                case ProductType.Auction when shoppingCartTypeId == ShoppingCartType.Wishlist:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Auction products couldn't be added to the wishlist"
+                    });
+            }
 
-            var product = await _productService.GetProductById(productId);
+            //check available date
+            if (product.AvailableEndDateTimeUtc.HasValue && product.AvailableEndDateTimeUtc.Value < DateTime.UtcNow)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = _translationService.GetResource("ShoppingCart.NotAvailable")
+                });
+            }
+
+            return null;
+        }
+
+        private async Task<double?> GetCustomerEnteredPrice(ProductDetailsCart model)
+        {
+            double? customerEnteredPriceConverted = null;
+            if (double.TryParse(model.CustomerEnteredPrice, out var customerEnteredPrice))
+                customerEnteredPriceConverted = await _currencyService.ConvertToPrimaryStoreCurrency(customerEnteredPrice, _workContext.WorkingCurrency);
+
+            return customerEnteredPriceConverted;
+        }
+        #endregion
+
+        #region Public methods
+
+        [HttpPost]
+        public virtual async Task<IActionResult> AddProductCatalog(ProductCatalogCart model)
+        {
+            var product = await _productService.GetProductById(model.ProductId);
             if (product == null)
                 //no product found
                 return Json(new
@@ -141,29 +189,29 @@ namespace Grand.Web.Controllers
                     message = "No product found with the specified ID"
                 });
 
-            var redirect = RedirectToProduct(product, cartType, quantity);
+            var redirect = RedirectToProduct(product, model.ShoppingCartTypeId, model.Quantity);
             if (redirect != null)
                 return redirect;
 
             var customer = _workContext.CurrentCustomer;
 
-            string warehouseId = GetWarehouse(product);
+            var warehouseId = GetWarehouse(product);
 
-            var cart = await _shoppingCartService.GetShoppingCart(_workContext.CurrentStore.Id, cartType);
+            var cart = await _shoppingCartService.GetShoppingCart(_workContext.CurrentStore.Id, model.ShoppingCartTypeId);
 
-            if (cartType != ShoppingCartType.Wishlist)
+            if (model.ShoppingCartTypeId != ShoppingCartType.Wishlist)
             {
-                var shoppingCartItem = await _shoppingCartService.FindShoppingCartItem(cart, cartType, product.Id, warehouseId);
+                var shoppingCartItem = await _shoppingCartService.FindShoppingCartItem(cart, model.ShoppingCartTypeId, product.Id, warehouseId);
 
                 //if we already have the same product in the cart, then use the total quantity to validate
-                var quantityToValidate = shoppingCartItem != null ? shoppingCartItem.Quantity + quantity : quantity;
+                var quantityToValidate = shoppingCartItem?.Quantity + model.Quantity ?? model.Quantity;
                 var addToCartWarnings = await _shoppingCartValidator
-                  .GetShoppingCartItemWarnings(customer, new ShoppingCartItem() {
-                      ShoppingCartTypeId = cartType,
+                  .GetShoppingCartItemWarnings(customer, new ShoppingCartItem {
+                      ShoppingCartTypeId = model.ShoppingCartTypeId,
                       StoreId = _workContext.CurrentStore.Id,
                       WarehouseId = warehouseId,
                       Quantity = quantityToValidate
-                  }, product, new ShoppingCartValidatorOptions() {
+                  }, product, new ShoppingCartValidatorOptions {
                       GetRequiredProductWarnings = false
                   });
 
@@ -172,23 +220,23 @@ namespace Grand.Web.Controllers
                     //cannot be added to the cart
                     return Json(new
                     {
-                        redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
+                        redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
                     });
                 }
             }
 
             //try adding product to the cart 
             var addToCart = await _shoppingCartService.AddToCart(customer: customer,
-                productId: productId,
-                shoppingCartType: cartType,
+                productId: product.Id,
+                shoppingCartType: model.ShoppingCartTypeId,
                 storeId: _workContext.CurrentStore.Id,
                 warehouseId: warehouseId,
-                quantity: quantity,
-                validator: new ShoppingCartValidatorOptions() {
+                quantity: model.Quantity,
+                validator: new ShoppingCartValidatorOptions {
                     GetRequiredProductWarnings = false,
-                    GetInventoryWarnings = (cartType == ShoppingCartType.ShoppingCart || !_shoppingCartSettings.AllowOutOfStockItemsToBeAddedToWishlist),
-                    GetAttributesWarnings = (cartType != ShoppingCartType.Wishlist),
-                    GetGiftVoucherWarnings = (cartType != ShoppingCartType.Wishlist)
+                    GetInventoryWarnings = model.ShoppingCartTypeId == ShoppingCartType.ShoppingCart || !_shoppingCartSettings.AllowOutOfStockItemsToBeAddedToWishlist,
+                    GetAttributesWarnings = model.ShoppingCartTypeId != ShoppingCartType.Wishlist,
+                    GetGiftVoucherWarnings = model.ShoppingCartTypeId != ShoppingCartType.Wishlist
                 });
 
             if (addToCart.warnings.Any())
@@ -196,24 +244,24 @@ namespace Grand.Web.Controllers
                 //cannot be added to the cart
                 return Json(new
                 {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
+                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
                 });
             }
 
-            var addtoCartModel = await _mediator.Send(new GetAddToCart() {
+            var addtoCartModel = await _mediator.Send(new GetAddToCart {
                 Product = product,
                 Customer = customer,
                 ShoppingCartItem = addToCart.shoppingCartItem,
-                Quantity = quantity,
-                CartType = cartType,
+                Quantity = model.Quantity,
+                CartType = model.ShoppingCartTypeId,
                 Currency = _workContext.WorkingCurrency,
                 Store = _workContext.CurrentStore,
                 Language = _workContext.WorkingLanguage,
-                TaxDisplayType = _workContext.TaxDisplayType,
+                TaxDisplayType = _workContext.TaxDisplayType
             });
 
             //added to the cart/wishlist
-            switch (cartType)
+            switch (model.ShoppingCartTypeId)
             {
                 case ShoppingCartType.Wishlist:
                     {
@@ -222,12 +270,12 @@ namespace Grand.Web.Controllers
                             _workContext.CurrentCustomer, HttpContext.Connection?.RemoteIpAddress?.ToString(),
                             _translationService.GetResource("ActivityLog.PublicStore.AddToWishlist"), product.Name);
 
-                        if (_shoppingCartSettings.DisplayWishlistAfterAddingProduct || forceredirection)
+                        if (_shoppingCartSettings.DisplayWishlistAfterAddingProduct || model.ForceRedirection)
                         {
                             //redirect to the wishlist page
                             return Json(new
                             {
-                                redirect = Url.RouteUrl("Wishlist"),
+                                redirect = Url.RouteUrl("Wishlist")
                             });
                         }
 
@@ -252,19 +300,20 @@ namespace Grand.Web.Controllers
                             _workContext.CurrentCustomer, HttpContext.Connection?.RemoteIpAddress?.ToString(),
                             _translationService.GetResource("ActivityLog.PublicStore.AddToShoppingCart"), product.Name);
 
-                        if (_shoppingCartSettings.DisplayCartAfterAddingProduct || forceredirection)
+                        if (_shoppingCartSettings.DisplayCartAfterAddingProduct || model.ForceRedirection)
                         {
                             //redirect to the shopping cart page
                             return Json(new
                             {
-                                redirect = Url.RouteUrl("ShoppingCart"),
+                                redirect = Url.RouteUrl("ShoppingCart")
                             });
                         }
 
                         //display notification message and update appropriate blocks
-                        var shoppingCartTypes = new List<ShoppingCartType>();
-                        shoppingCartTypes.Add(ShoppingCartType.ShoppingCart);
-                        shoppingCartTypes.Add(ShoppingCartType.Auctions);
+                        var shoppingCartTypes = new List<ShoppingCartType> {
+                            ShoppingCartType.ShoppingCart,
+                            ShoppingCartType.Auctions
+                        };
                         if (_shoppingCartSettings.AllowOnHoldCart)
                             shoppingCartTypes.Add(ShoppingCartType.OnHoldCart);
 
@@ -272,7 +321,7 @@ namespace Grand.Web.Controllers
                             (await _shoppingCartService.GetShoppingCart(_workContext.CurrentStore.Id, shoppingCartTypes.ToArray()))
                                 .Sum(x => x.Quantity));
 
-                        var miniShoppingCartmodel = _shoppingCartSettings.MiniShoppingCartEnabled ? await _mediator.Send(new GetMiniShoppingCart() {
+                        var miniShoppingCartmodel = _shoppingCartSettings.MiniShoppingCartEnabled ? await _mediator.Send(new GetMiniShoppingCart {
                             Customer = _workContext.CurrentCustomer,
                             Currency = _workContext.WorkingCurrency,
                             Language = _workContext.WorkingLanguage,
@@ -292,202 +341,110 @@ namespace Grand.Web.Controllers
             }
         }
 
-        protected IActionResult ReturnFailMessage(Product product, ShoppingCartType shoppingCartTypeId)
-        {
-            //you can't add group products
-            if (product.ProductTypeId == ProductType.GroupedProduct)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Grouped products couldn't be added to the cart"
-                });
-            }
-
-            //you can't add reservation product to wishlist
-            if (product.ProductTypeId == ProductType.Reservation && (ShoppingCartType)shoppingCartTypeId == ShoppingCartType.Wishlist)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Reservation products couldn't be added to the wishlist"
-                });
-            }
-
-            //you can't add auction product to wishlist
-            if (product.ProductTypeId == ProductType.Auction && (ShoppingCartType)shoppingCartTypeId == ShoppingCartType.Wishlist)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Auction products couldn't be added to the wishlist"
-                });
-            }
-            //check available date
-            if (product.AvailableEndDateTimeUtc.HasValue && product.AvailableEndDateTimeUtc.Value < DateTime.UtcNow)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = _translationService.GetResource("ShoppingCart.NotAvailable")
-                });
-            }
-
-            return null;
-        }
-
-        private async Task<double?> GetCustomerEnteredPrice(IFormCollection form, string productId)
-        {
-            double? customerEnteredPriceConverted = null;
-            foreach (string formKey in form.Keys)
-            {
-                if (formKey.Equals(string.Format("addtocart_{0}.CustomerEnteredPrice", productId), StringComparison.OrdinalIgnoreCase))
-                {
-                    if (double.TryParse(form[formKey], out double customerEnteredPrice))
-                        customerEnteredPriceConverted = await _currencyService.ConvertToPrimaryStoreCurrency(customerEnteredPrice, _workContext.WorkingCurrency);
-                    break;
-                }
-            }
-            return customerEnteredPriceConverted;
-        }
-
-        private int GetQuantity(IFormCollection form, string productId)
-        {
-            int quantity = 1;
-            foreach (string formKey in form.Keys)
-                if (formKey.Equals(string.Format("addtocart_{0}.EnteredQuantity", productId), StringComparison.OrdinalIgnoreCase))
-                {
-                    int.TryParse(form[formKey], out quantity);
-                    break;
-                }
-
-            return quantity;
-        }
-
         [HttpPost]
-        public virtual async Task<IActionResult> AddProductDetails(string productId, int shoppingCartTypeId, IFormCollection form)
+        public virtual async Task<IActionResult> AddProductDetails(ProductDetailsCart model)
         {
-            var product = await _productService.GetProductById(productId);
+            var product = await _productService.GetProductById(model.ProductId);
             if (product == null)
             {
                 return Json(new
                 {
-                    redirect = Url.RouteUrl("HomePage"),
+                    redirect = Url.RouteUrl("HomePage")
                 });
             }
 
-            var message = ReturnFailMessage(product, (ShoppingCartType)shoppingCartTypeId);
+            var message = ReturnFailMessage(product, model.ShoppingCartTypeId);
             if (message != null)
                 return message;
 
             double? customerEnteredPriceConverted = null;
             if (product.EnteredPrice)
             {
-                customerEnteredPriceConverted = await GetCustomerEnteredPrice(form, productId);
+                customerEnteredPriceConverted = await GetCustomerEnteredPrice(model);
             }
-
-            var quantity = GetQuantity(form, productId);
-
-            //product and gift voucher attributes
-            var attributes = await _mediator.Send(new GetParseProductAttributes() { Product = product, Form = form });
-
+            //product attributes
+            var attributes = await _mediator.Send(new GetParseProductAttributes { Product = product, Attributes = model.Attributes });
+            //gift voucher 
+            if (product.IsGiftVoucher)
+            {
+                attributes = GiftVoucherExtensions.AddGiftVoucherAttribute(attributes,
+                    model.RecipientName, 
+                    model.RecipientEmail, 
+                    model.SenderName, 
+                    model.SenderEmail, 
+                    model.Message).ToList();
+            }
             //rental attributes
             DateTime? rentalStartDate = null;
             DateTime? rentalEndDate = null;
             if (product.ProductTypeId == ProductType.Reservation)
             {
-                product.ParseReservationDates(form, out rentalStartDate, out rentalEndDate);
+                product.ParseReservationDates(model.ReservationDatepickerFrom, model.ReservationDatepickerTo, out rentalStartDate, out rentalEndDate);
             }
 
             //product reservation
-            string reservationId = "";
-            string parameter = "";
-            string duration = "";
+            var parameter = "";
+            var duration = "";
             if (product.ProductTypeId == ProductType.Reservation)
             {
-                foreach (string formKey in form.Keys)
+                switch (product.IntervalUnitId)
                 {
-                    if (formKey.Contains("Reservation"))
-                    {
-                        reservationId = form["Reservation"].ToString();
-                        break;
-                    }
-                }
-
-                if (product.IntervalUnitId == IntervalUnit.Hour || product.IntervalUnitId == IntervalUnit.Minute)
-                {
-                    if (string.IsNullOrEmpty(reservationId))
-                    {
+                    case IntervalUnit.Hour or IntervalUnit.Minute when string.IsNullOrEmpty(model.Reservation):
                         return Json(new
                         {
                             success = false,
                             message = _translationService.GetResource("Product.Addtocart.Reservation.Required")
                         });
-                    }
-                    var productReservationService = HttpContext.RequestServices.GetRequiredService<IProductReservationService>();
-                    var reservation = await productReservationService.GetProductReservation(reservationId);
-                    if (reservation == null)
+                    case IntervalUnit.Hour or IntervalUnit.Minute:
                     {
-                        return Json(new
+                        var productReservationService = HttpContext.RequestServices.GetRequiredService<IProductReservationService>();
+                        var reservation = await productReservationService.GetProductReservation(model.Reservation);
+                        if (reservation == null)
                         {
-                            success = false,
-                            message = "No reservation found"
-                        });
+                            return Json(new
+                            {
+                                success = false,
+                                message = "No reservation found"
+                            });
+                        }
+                        duration = reservation.Duration;
+                        rentalStartDate = reservation.Date;
+                        parameter = reservation.Parameter;
+                        break;
                     }
-                    duration = reservation.Duration;
-                    rentalStartDate = reservation.Date;
-                    parameter = reservation.Parameter;
-                }
-                else if (product.IntervalUnitId == IntervalUnit.Day)
-                {
-                    string datefrom = "";
-                    string dateto = "";
-                    foreach (var item in form)
+                    case IntervalUnit.Day:
                     {
-                        if (item.Key == "reservationDatepickerFrom")
+                        const string datePickerFormat = "MM/dd/yyyy";
+                        if (!string.IsNullOrEmpty(model.ReservationDatepickerFrom))
                         {
-                            datefrom = item.Value;
+                            rentalStartDate = DateTime.ParseExact(model.ReservationDatepickerFrom, datePickerFormat, CultureInfo.InvariantCulture);
+                        }
+                        if (!string.IsNullOrEmpty(model.ReservationDatepickerTo))
+                        {
+                            rentalEndDate = DateTime.ParseExact(model.ReservationDatepickerTo, datePickerFormat, CultureInfo.InvariantCulture);
                         }
 
-                        if (item.Key == "reservationDatepickerTo")
-                        {
-                            dateto = item.Value;
-                        }
-                    }
-
-                    string datePickerFormat = "MM/dd/yyyy";
-                    if (!string.IsNullOrEmpty(datefrom))
-                    {
-                        rentalStartDate = DateTime.ParseExact(datefrom, datePickerFormat, CultureInfo.InvariantCulture);
-                    }
-
-                    if (!string.IsNullOrEmpty(dateto))
-                    {
-                        rentalEndDate = DateTime.ParseExact(dateto, datePickerFormat, CultureInfo.InvariantCulture);
+                        break;
                     }
                 }
             }
 
-            var cartType = (ShoppingCartType)shoppingCartTypeId;
-
             //save item
             var addToCartWarnings = new List<string>();
-
-
-            string warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ?
-                form["WarehouseId"].ToString() :
+            var warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ?
+                model.WarehouseId:
                 product.UseMultipleWarehouses ? _workContext.CurrentStore.DefaultWarehouseId :
-                (string.IsNullOrEmpty(_workContext.CurrentStore.DefaultWarehouseId) ? product.WarehouseId : _workContext.CurrentStore.DefaultWarehouseId);
+                string.IsNullOrEmpty(_workContext.CurrentStore.DefaultWarehouseId) ? product.WarehouseId : _workContext.CurrentStore.DefaultWarehouseId;
 
 
             //add to the cart
             var (warnings, shoppingCartItem) = await _shoppingCartService.AddToCart(_workContext.CurrentCustomer,
-                productId, cartType, _workContext.CurrentStore.Id, warehouseId,
+                product.Id, model.ShoppingCartTypeId, _workContext.CurrentStore.Id, warehouseId,
                 attributes, customerEnteredPriceConverted,
-                rentalStartDate, rentalEndDate, quantity, true, reservationId, parameter, duration,
-                new ShoppingCartValidatorOptions() {
+                rentalStartDate, rentalEndDate, model.EnteredQuantity, true, model.Reservation, parameter, duration,
+                new ShoppingCartValidatorOptions {
                     GetRequiredProductWarnings = false,
-                    GetInventoryWarnings = (cartType == ShoppingCartType.ShoppingCart || !_shoppingCartSettings.AllowOutOfStockItemsToBeAddedToWishlist),
+                    GetInventoryWarnings = model.ShoppingCartTypeId == ShoppingCartType.ShoppingCart || !_shoppingCartSettings.AllowOutOfStockItemsToBeAddedToWishlist
                 });
 
             addToCartWarnings.AddRange(warnings);
@@ -505,12 +462,12 @@ namespace Grand.Web.Controllers
                 });
             }
 
-            var addtoCartModel = await _mediator.Send(new GetAddToCart() {
+            var addtoCartModel = await _mediator.Send(new GetAddToCart {
                 Product = product,
                 Customer = _workContext.CurrentCustomer,
                 ShoppingCartItem = shoppingCartItem,
-                Quantity = quantity,
-                CartType = cartType,
+                Quantity = model.EnteredQuantity,
+                CartType = model.ShoppingCartTypeId,
                 CustomerEnteredPrice = customerEnteredPriceConverted,
                 Attributes = attributes,
                 Currency = _workContext.WorkingCurrency,
@@ -519,13 +476,13 @@ namespace Grand.Web.Controllers
                 TaxDisplayType = _workContext.TaxDisplayType,
                 Duration = duration,
                 Parameter = parameter,
-                ReservationId = reservationId,
+                ReservationId = model.Reservation,
                 StartDate = rentalStartDate,
                 EndDate = rentalEndDate
             });
 
             //added to the cart/wishlist
-            switch (cartType)
+            switch (model.ShoppingCartTypeId)
             {
                 case ShoppingCartType.Wishlist:
                     {
@@ -539,7 +496,7 @@ namespace Grand.Web.Controllers
                             //redirect to the wishlist page
                             return Json(new
                             {
-                                redirect = Url.RouteUrl("Wishlist"),
+                                redirect = Url.RouteUrl("Wishlist")
                             });
                         }
 
@@ -551,7 +508,7 @@ namespace Grand.Web.Controllers
                         {
                             success = true,
                             message = string.Format(_translationService.GetResource("Products.ProductHasBeenAddedToTheWishlist.Link"), Url.RouteUrl("Wishlist")),
-                            updatetopwishlistsectionhtml = updatetopwishlistsectionhtml,
+                            updatetopwishlistsectionhtml,
                             wishlistqty = qty,
                             model = addtoCartModel
                         });
@@ -569,14 +526,15 @@ namespace Grand.Web.Controllers
                             //redirect to the shopping cart page
                             return Json(new
                             {
-                                redirect = Url.RouteUrl("ShoppingCart"),
+                                redirect = Url.RouteUrl("ShoppingCart")
                             });
                         }
 
                         //display notification message and update appropriate blocks
-                        var shoppingCartTypes = new List<ShoppingCartType>();
-                        shoppingCartTypes.Add(ShoppingCartType.ShoppingCart);
-                        shoppingCartTypes.Add(ShoppingCartType.Auctions);
+                        var shoppingCartTypes = new List<ShoppingCartType> {
+                            ShoppingCartType.ShoppingCart,
+                            ShoppingCartType.Auctions
+                        };
                         if (_shoppingCartSettings.AllowOnHoldCart)
                             shoppingCartTypes.Add(ShoppingCartType.OnHoldCart);
 
@@ -584,7 +542,7 @@ namespace Grand.Web.Controllers
                             (await _shoppingCartService.GetShoppingCart(_workContext.CurrentStore.Id, shoppingCartTypes.ToArray()))
                                 .Sum(x => x.Quantity));
 
-                        var miniShoppingCartmodel = _shoppingCartSettings.MiniShoppingCartEnabled ? await _mediator.Send(new GetMiniShoppingCart() {
+                        var miniShoppingCartmodel = _shoppingCartSettings.MiniShoppingCartEnabled ? await _mediator.Send(new GetMiniShoppingCart {
                             Customer = _workContext.CurrentCustomer,
                             Currency = _workContext.WorkingCurrency,
                             Language = _workContext.WorkingLanguage,
@@ -603,13 +561,228 @@ namespace Grand.Web.Controllers
                         });
                     }
             }
-
-
             #endregion
         }
 
         [HttpPost]
-        public virtual async Task<IActionResult> AddBid(string productId, int shoppingCartTypeId, IFormCollection form,
+        public virtual async Task<IActionResult> UpdateItemCart(ProductDetailsCart model)
+        {
+            var cart = _workContext.CurrentCustomer.ShoppingCartItems.FirstOrDefault(sci => sci.Id == model.ShoppingCartItemId);
+            if (cart == null)
+                return Json(new
+                {
+                    success = false,
+                    message = "No item cart found with the specified ID"
+                });
+
+            var product = await _productService.GetProductById(cart.ProductId);
+            if (product == null)
+            {
+                return Json(new
+                {
+                    redirect = Url.RouteUrl("HomePage")
+                });
+            }
+
+            switch (product.ProductTypeId)
+            {
+                //you can't add group products
+                case ProductType.GroupedProduct:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Grouped products couldn't be added to the cart"
+                    });
+                //you can't add reservation product to wishlist
+                case ProductType.Reservation when cart.ShoppingCartTypeId == ShoppingCartType.Wishlist:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Reservation products couldn't be added to the wishlist"
+                    });
+                //you can't add auction product to wishlist
+                case ProductType.Auction:
+                    return Json(new
+                    {
+                        success = false,
+                        message = "Auction products couldn't be added to the wishlist"
+                    });
+            }
+
+            //check available date
+            if (product.AvailableEndDateTimeUtc.HasValue && product.AvailableEndDateTimeUtc.Value < DateTime.UtcNow)
+            {
+                return Json(new
+                {
+                    success = false,
+                    message = _translationService.GetResource("ShoppingCart.NotAvailable")
+                });
+            }
+
+            #region Customer entered price
+            double? customerEnteredPriceConverted = null;
+            if (product.EnteredPrice)
+            {
+                if (double.TryParse(model.CustomerEnteredPrice, out var customerEnteredPrice))
+                    customerEnteredPriceConverted = await _currencyService.ConvertToPrimaryStoreCurrency(customerEnteredPrice, _workContext.WorkingCurrency);
+            }
+            #endregion
+
+            //product attributes
+            var attributes = await _mediator.Send(new GetParseProductAttributes { Product = product, Attributes = model.Attributes });
+            
+            //gift voucher 
+            if (product.IsGiftVoucher)
+            {
+                attributes = GiftVoucherExtensions.AddGiftVoucherAttribute(attributes,
+                    model.RecipientName, 
+                    model.RecipientEmail, 
+                    model.SenderName, 
+                    model.SenderEmail, 
+                    model.Message).ToList();
+            }
+            
+            //rental attributes
+            DateTime? rentalStartDate = cart.RentalStartDateUtc;
+            DateTime? rentalEndDate = cart.RentalEndDateUtc;
+            if (product.ProductTypeId == ProductType.Reservation)
+            {
+                product.ParseReservationDates(model.ReservationDatepickerFrom, model.ReservationDatepickerTo, out rentalStartDate, out rentalEndDate);
+            }
+
+            //product reservation
+            if (product.ProductTypeId == ProductType.Reservation)
+            {
+                switch (product.IntervalUnitId)
+                {
+                    case IntervalUnit.Hour or IntervalUnit.Minute when string.IsNullOrEmpty(model.Reservation):
+                        return Json(new
+                        {
+                            success = false,
+                            message = _translationService.GetResource("Product.Addtocart.Reservation.Required")
+                        });
+                    case IntervalUnit.Hour or IntervalUnit.Minute:
+                    {
+                        var productReservationService = HttpContext.RequestServices.GetRequiredService<IProductReservationService>();
+                        var reservation = await productReservationService.GetProductReservation(model.Reservation);
+                        if (reservation == null)
+                        {
+                            return Json(new
+                            {
+                                success = false,
+                                message = "No reservation found"
+                            });
+                        }
+
+                        rentalStartDate = reservation.Date;
+                        break;
+                    }
+                    case IntervalUnit.Day:
+                    {
+                        const string datePickerFormat = "MM/dd/yyyy";
+                        if (!string.IsNullOrEmpty(model.ReservationDatepickerFrom))
+                        {
+                            rentalStartDate = DateTime.ParseExact(model.ReservationDatepickerFrom, datePickerFormat, CultureInfo.InvariantCulture);
+                        }
+                        if (!string.IsNullOrEmpty(model.ReservationDatepickerTo))
+                        {
+                            rentalEndDate = DateTime.ParseExact(model.ReservationDatepickerTo, datePickerFormat, CultureInfo.InvariantCulture);
+                        }
+
+                        break;
+                    }
+                }
+            }
+            //save item
+            var addToCartWarnings = new List<string>();
+
+            var warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ?
+                model.WarehouseId : cart.WarehouseId;
+
+            //update existing item
+            addToCartWarnings.AddRange(await _shoppingCartService.UpdateShoppingCartItem(_workContext.CurrentCustomer,
+                cart.Id, warehouseId, attributes, customerEnteredPriceConverted,
+                rentalStartDate, rentalEndDate, model.EnteredQuantity));
+
+            if (addToCartWarnings.Any())
+            {
+                //cannot be updated the cart/wishlist
+                return Json(new
+                {
+                    success = false,
+                    message = addToCartWarnings.ToArray()
+                });
+            }
+
+            return Json(new
+            {
+                success = true,
+                message = ""
+            });
+
+        }
+
+        [HttpGet]
+        public virtual async Task<IActionResult> GetItemCart(string shoppingCartId)
+        {
+            var cart = _workContext.CurrentCustomer.ShoppingCartItems.FirstOrDefault(sci => sci.Id == shoppingCartId);
+            if (cart == null)
+                return Json(new
+                {
+                    success = false,
+                    message = "No item cart found with the specified ID"
+                });
+
+            var product = await _productService.GetProductById(cart.ProductId);
+            if (product == null)
+                return Json(new
+                {
+                    success = false,
+                    message = "No product found with the specified ID"
+                });
+
+
+            //availability dates
+            if (!product.IsAvailable() && product.ProductTypeId != ProductType.Auction)
+                return Json(new
+                {
+                    success = false,
+                    message = "No product found with the specified ID"
+                });
+
+            //visible individually?
+            if (!product.VisibleIndividually)
+            {
+                //is this one an associated products?
+                var parentGroupedProduct = await _productService.GetProductById(product.ParentGroupedProductId);
+                if (parentGroupedProduct == null)
+                {
+                    return Json(new
+                    {
+                        redirect = Url.RouteUrl("HomePage")
+                    });
+                }
+                return Json(new
+                {
+                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) })
+                });
+            }
+
+            //prepare the model
+            var model = await _mediator.Send(new GetProductDetailsPage {
+                Store = _workContext.CurrentStore,
+                Product = product,
+                UpdateCartItem = cart
+            });
+
+            return Json(new
+            {
+                success = true, model
+            });
+        }
+        
+        [HttpPost] 
+        public virtual async Task<IActionResult> AddBid(AddBidModel model,
             [FromServices] IAuctionService auctionService)
         {
             var customer = _workContext.CurrentCustomer;
@@ -621,19 +794,12 @@ namespace Grand.Web.Controllers
                     message = _translationService.GetResource("ShoppingCart.Mustberegisteredtobid")
                 });
             }
-            double bid = 0;
-            foreach (string formKey in form.Keys)
-            {
-                if (formKey.Equals(string.Format("auction_{0}.HighestBidValue", productId), StringComparison.OrdinalIgnoreCase))
-                {
-                    double.TryParse(form[formKey], out bid);
-                    if (bid == 0)
-                        double.TryParse(form[formKey], NumberStyles.AllowDecimalPoint, CultureInfo.GetCultureInfo("en-US").NumberFormat, out bid);
+            double.TryParse(model.HighestBidValue, out var bid);
+            if (bid == 0)
+                double.TryParse(model.HighestBidValue, NumberStyles.AllowDecimalPoint, CultureInfo.GetCultureInfo("en-US").NumberFormat, out bid);
 
-                    bid = Math.Round(bid, 2);
-                    break;
-                }
-            }
+            bid = Math.Round(bid, 2);
+            
             if (bid <= 0)
             {
                 return Json(new
@@ -643,7 +809,7 @@ namespace Grand.Web.Controllers
                 });
             }
 
-            Product product = await _productService.GetProductById(productId);
+            var product = await _productService.GetProductById(model.ProductId);
             if (product == null)
                 throw new ArgumentNullException(nameof(product));
 
@@ -656,7 +822,7 @@ namespace Grand.Web.Controllers
                 });
             }
 
-            var warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ? form["WarehouseId"].ToString() : _workContext.CurrentStore.DefaultWarehouseId;
+            var warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ? model.WarehouseId : _workContext.CurrentStore.DefaultWarehouseId;
 
             var shoppingCartItem = new ShoppingCartItem {
                 Attributes = new List<CustomAttribute>(),
@@ -674,7 +840,7 @@ namespace Grand.Web.Controllers
 
             if (warnings.Any())
             {
-                string toReturn = "";
+                var toReturn = "";
                 foreach (var warning in warnings)
                 {
                     toReturn += warning + "</br>";
@@ -695,7 +861,7 @@ namespace Grand.Web.Controllers
                 _workContext.CurrentCustomer, HttpContext.Connection?.RemoteIpAddress?.ToString(),
                 _translationService.GetResource("ActivityLog.PublicStore.AddToBid"), product.Name);
 
-            var addtoCartModel = await _mediator.Send(new GetAddToCart() {
+            var addtoCartModel = await _mediator.Send(new GetAddToCart {
                 Product = product,
                 Customer = customer,
                 Quantity = 1,
@@ -703,7 +869,7 @@ namespace Grand.Web.Controllers
                 Currency = _workContext.WorkingCurrency,
                 Store = _workContext.CurrentStore,
                 Language = _workContext.WorkingLanguage,
-                TaxDisplayType = _workContext.TaxDisplayType,
+                TaxDisplayType = _workContext.TaxDisplayType
             });
 
             return Json(new
@@ -713,262 +879,7 @@ namespace Grand.Web.Controllers
                 model = addtoCartModel
             });
         }
-
-        public virtual async Task<IActionResult> GetItemCart(string shoppingcartId)
-        {
-            var cart = _workContext.CurrentCustomer.ShoppingCartItems.FirstOrDefault(sci => sci.Id == shoppingcartId);
-            if (cart == null)
-                return Json(new
-                {
-                    success = false,
-                    message = "No item cart found with the specified ID"
-                });
-
-            var product = await _productService.GetProductById(cart.ProductId);
-            if (product == null)
-                return Json(new
-                {
-                    success = false,
-                    message = "No product found with the specified ID"
-                });
-
-
-            //availability dates
-            if (!product.IsAvailable() && !(product.ProductTypeId == ProductType.Auction))
-                return Json(new
-                {
-                    success = false,
-                    message = "No product found with the specified ID"
-                });
-
-            //visible individually?
-            if (!product.VisibleIndividually)
-            {
-                //is this one an associated products?
-                var parentGroupedProduct = await _productService.GetProductById(product.ParentGroupedProductId);
-                if (parentGroupedProduct == null)
-                {
-                    return Json(new
-                    {
-                        redirect = Url.RouteUrl("HomePage"),
-                    });
-                }
-                return Json(new
-                {
-                    redirect = Url.RouteUrl("Product", new { SeName = product.GetSeName(_workContext.WorkingLanguage.Id) }),
-                });
-            }
-
-            //prepare the model
-            var model = await _mediator.Send(new GetProductDetailsPage() {
-                Store = _workContext.CurrentStore,
-                Product = product,
-                UpdateCartItem = cart
-            });
-
-            return Json(new
-            {
-                success = true,
-                model = model,
-            });
-        }
-
-        [HttpPost]
-        public virtual async Task<IActionResult> UpdateItemCart(string shoppingCartItemId, IFormCollection form)
-        {
-            var cart = _workContext.CurrentCustomer.ShoppingCartItems.FirstOrDefault(sci => sci.Id == shoppingCartItemId);
-            if (cart == null)
-                return Json(new
-                {
-                    success = false,
-                    message = "No item cart found with the specified ID"
-                });
-
-            var product = await _productService.GetProductById(cart.ProductId);
-            if (product == null)
-            {
-                return Json(new
-                {
-                    redirect = Url.RouteUrl("HomePage"),
-                });
-            }
-
-            //you can't add group products
-            if (product.ProductTypeId == ProductType.GroupedProduct)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Grouped products couldn't be added to the cart"
-                });
-            }
-
-            //you can't add reservation product to wishlist
-            if (product.ProductTypeId == ProductType.Reservation && cart.ShoppingCartTypeId == ShoppingCartType.Wishlist)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Reservation products couldn't be added to the wishlist"
-                });
-            }
-
-            //you can't add auction product to wishlist
-            if (product.ProductTypeId == ProductType.Auction)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = "Auction products couldn't be added to the wishlist"
-                });
-            }
-            //check available date
-            if (product.AvailableEndDateTimeUtc.HasValue && product.AvailableEndDateTimeUtc.Value < DateTime.UtcNow)
-            {
-                return Json(new
-                {
-                    success = false,
-                    message = _translationService.GetResource("ShoppingCart.NotAvailable")
-                });
-            }
-
-            #region Customer entered price
-            double? customerEnteredPriceConverted = null;
-            if (product.EnteredPrice)
-            {
-                foreach (string formKey in form.Keys)
-                {
-                    if (formKey.Equals(string.Format("addtocart_{0}.CustomerEnteredPrice", cart.ProductId), StringComparison.OrdinalIgnoreCase))
-                    {
-                        if (double.TryParse(form[formKey], out double customerEnteredPrice))
-                            customerEnteredPriceConverted = await _currencyService.ConvertToPrimaryStoreCurrency(customerEnteredPrice, _workContext.WorkingCurrency);
-                        break;
-                    }
-                }
-            }
-            #endregion
-
-            #region Quantity
-
-            var quantity = cart.Quantity;
-            foreach (string formKey in form.Keys)
-                if (formKey.Equals(string.Format("addtocart_{0}.EnteredQuantity", cart.ProductId), StringComparison.OrdinalIgnoreCase))
-                {
-                    int.TryParse(form[formKey], out quantity);
-                    break;
-                }
-
-            #endregion
-
-            //product and gift voucher attributes
-            var attributes = await _mediator.Send(new GetParseProductAttributes() { Product = product, Form = form });
-
-            //rental attributes
-            DateTime? rentalStartDate = cart.RentalStartDateUtc;
-            DateTime? rentalEndDate = cart.RentalEndDateUtc;
-            if (product.ProductTypeId == ProductType.Reservation)
-            {
-                product.ParseReservationDates(form, out rentalStartDate, out rentalEndDate);
-            }
-
-            //product reservation
-            string reservationId = cart.ReservationId;
-            string parameter = cart.Parameter;
-            string duration = cart.Duration;
-            if (product.ProductTypeId == ProductType.Reservation)
-            {
-                foreach (string formKey in form.Keys)
-                {
-                    if (formKey.Contains("Reservation"))
-                    {
-                        reservationId = form["Reservation"].ToString();
-                        break;
-                    }
-                }
-
-                if (product.IntervalUnitId == IntervalUnit.Hour || product.IntervalUnitId == IntervalUnit.Minute)
-                {
-                    if (string.IsNullOrEmpty(reservationId))
-                    {
-                        return Json(new
-                        {
-                            success = false,
-                            message = _translationService.GetResource("Product.Addtocart.Reservation.Required")
-                        });
-                    }
-                    var productReservationService = HttpContext.RequestServices.GetRequiredService<IProductReservationService>();
-                    var reservation = await productReservationService.GetProductReservation(reservationId);
-                    if (reservation == null)
-                    {
-                        return Json(new
-                        {
-                            success = false,
-                            message = "No reservation found"
-                        });
-                    }
-                    duration = reservation.Duration;
-                    rentalStartDate = reservation.Date;
-                    parameter = reservation.Parameter;
-                }
-                else if (product.IntervalUnitId == IntervalUnit.Day)
-                {
-                    string datefrom = "";
-                    string dateto = "";
-                    foreach (var item in form)
-                    {
-                        if (item.Key == "reservationDatepickerFrom")
-                        {
-                            datefrom = item.Value;
-                        }
-
-                        if (item.Key == "reservationDatepickerTo")
-                        {
-                            dateto = item.Value;
-                        }
-                    }
-
-                    string datePickerFormat = "MM/dd/yyyy";
-                    if (!string.IsNullOrEmpty(datefrom))
-                    {
-                        rentalStartDate = DateTime.ParseExact(datefrom, datePickerFormat, CultureInfo.InvariantCulture);
-                    }
-
-                    if (!string.IsNullOrEmpty(dateto))
-                    {
-                        rentalEndDate = DateTime.ParseExact(dateto, datePickerFormat, CultureInfo.InvariantCulture);
-                    }
-                }
-            }
-
-            //save item
-            var addToCartWarnings = new List<string>();
-
-            var warehouseId = _shoppingCartSettings.AllowToSelectWarehouse ?
-                form["WarehouseId"].ToString() : cart.WarehouseId;
-
-            //update existing item
-            addToCartWarnings.AddRange(await _shoppingCartService.UpdateShoppingCartItem(_workContext.CurrentCustomer,
-                cart.Id, warehouseId, attributes, customerEnteredPriceConverted,
-                rentalStartDate, rentalEndDate, quantity, true));
-
-            if (addToCartWarnings.Any())
-            {
-                //cannot be updated the cart/wishlist
-                return Json(new
-                {
-                    success = false,
-                    message = addToCartWarnings.ToArray()
-                });
-            }
-
-            return Json(new
-            {
-                success = true,
-                message = ""
-            });
-
-        }
-
+        
         #endregion
 
     }

@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Discounts;
+﻿using Grand.Domain.Discounts;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallDiscounts()
         {
@@ -32,7 +31,7 @@ namespace Grand.Business.System.Services.Installation
                                             RequiresCouponCode = true,
                                             IsEnabled = true,
                                             CurrencyCode = "USD"
-                                        },
+                                        }
                                 };
             await _discountRepository.InsertAsync(discounts);
             var coupon1 = new DiscountCoupon

@@ -1,9 +1,8 @@
-﻿using Grand.Business.Core.Interfaces.System.Installation;
-using Grand.Domain.Tasks;
+﻿using Grand.Domain.Tasks;
 
 namespace Grand.Business.System.Services.Installation
 {
-    public partial class InstallationService : IInstallationService
+    public partial class InstallationService
     {
         protected virtual async Task InstallScheduleTasks()
         {
@@ -75,7 +74,7 @@ namespace Grand.Business.System.Services.Installation
                     Enabled = false,
                     StopOnError = false,
                     TimeInterval = 1440
-                },
+                }
             };
             await _scheduleTaskRepository.InsertAsync(tasks);
         }

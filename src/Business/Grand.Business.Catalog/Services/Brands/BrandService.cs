@@ -6,8 +6,8 @@ using Grand.Domain.Data;
 using Grand.Infrastructure;
 using Grand.Infrastructure.Caching;
 using Grand.Infrastructure.Caching.Constants;
+using Grand.Infrastructure.Configuration;
 using Grand.Infrastructure.Extensions;
-using Grand.SharedKernel.Extensions;
 using MediatR;
 
 namespace Grand.Business.Catalog.Services.Brands
@@ -15,7 +15,7 @@ namespace Grand.Business.Catalog.Services.Brands
     /// <summary>
     /// Brand service
     /// </summary>
-    public partial class BrandService : IBrandService
+    public class BrandService : IBrandService
     {
         #region Fields
 
@@ -23,7 +23,8 @@ namespace Grand.Business.Catalog.Services.Brands
         private readonly IWorkContext _workContext;
         private readonly IMediator _mediator;
         private readonly ICacheBase _cacheBase;
-
+        private readonly AccessControlConfig _accessControlConfig;
+        
         #endregion
 
         #region Ctor
@@ -34,12 +35,13 @@ namespace Grand.Business.Catalog.Services.Brands
         public BrandService(ICacheBase cacheBase,
             IRepository<Brand> brandRepository,
             IWorkContext workContext,
-            IMediator mediator)
+            IMediator mediator, AccessControlConfig accessControlConfig)
         {
             _cacheBase = cacheBase;
             _brandRepository = brandRepository;
             _workContext = workContext;
             _mediator = mediator;
+            _accessControlConfig = accessControlConfig;
         }
         #endregion
 
@@ -65,12 +67,12 @@ namespace Grand.Business.Catalog.Services.Brands
 
             if (!showHidden)
                 query = query.Where(m => m.Published);
-            if (!String.IsNullOrWhiteSpace(brandName))
+            if (!string.IsNullOrWhiteSpace(brandName))
                 query = query.Where(m => m.Name != null && m.Name.ToLower().Contains(brandName.ToLower()));
 
-            if ((!CommonHelper.IgnoreAcl || (!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations)))
+            if (!_accessControlConfig.IgnoreAcl || (!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations))
             {
-                if (!showHidden && !CommonHelper.IgnoreAcl)
+                if (!showHidden && !_accessControlConfig.IgnoreAcl)
                 {
                     //Limited to customer groups rules
                     var allowedCustomerGroupsIds = _workContext.CurrentCustomer.GetCustomerGroupIds();
@@ -79,7 +81,7 @@ namespace Grand.Business.Catalog.Services.Brands
                             select p;
 
                 }
-                if (!String.IsNullOrEmpty(storeId) && !CommonHelper.IgnoreStoreLimitations)
+                if (!string.IsNullOrEmpty(storeId) && !_accessControlConfig.IgnoreStoreLimitations)
                 {
                     //Limited to stores rules
                     query = from p in query
@@ -98,7 +100,7 @@ namespace Grand.Business.Catalog.Services.Brands
         /// <returns>Brand</returns>
         public virtual Task<Brand> GetBrandById(string brandId)
         {
-            string key = string.Format(CacheKey.BRANDS_BY_ID_KEY, brandId);
+            var key = string.Format(CacheKey.BRANDS_BY_ID_KEY, brandId);
             return _cacheBase.GetAsync(key, () => _brandRepository.GetByIdAsync(brandId));
         }
 

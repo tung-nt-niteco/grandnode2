@@ -15,7 +15,7 @@ namespace Grand.Domain.Catalog
         /// </summary>
         public bool AllowViewUnpublishedProductPage { get; set; }
         /// <summary>
-        /// Gets or sets a value indicating customers should see "discontinued" message when visibting details pages of unpublished products (if "AllowViewUnpublishedProductPage" is "true)
+        /// Gets or sets a value indicating customers should see "discontinued" message when visiting details pages of unpublished products (if "AllowViewUnpublishedProductPage" is "true)
         /// </summary>
         public bool DisplayDiscontinuedMessageForUnpublishedProducts { get; set; }
         /// <summary>
@@ -129,6 +129,11 @@ namespace Grand.Domain.Catalog
         /// </summary>
         public bool NotifyStoreOwnerAboutNewProductReviews { get; set; }
 
+        /// <summary>
+        /// Gets or sets a value the filtering by product review
+        /// </summary>
+        public string FilterProductRating { get; set; }
+        
         /// <summary>
         /// Gets or sets a value indicating whether product 'Email a friend' feature is enabled
         /// </summary>
@@ -409,5 +414,11 @@ namespace Grand.Domain.Catalog
         /// Gets or sets a sorting by availability
         /// </summary>
         public bool SortingByAvailability { get; set; }
+
+        /// <summary>
+        /// Gets or sets the max value for page size to use for pagination on all brands/all collection/all vendors/ all categories page 
+        /// </summary>
+        public int MaxCatalogPageSize { get; set; } = 10;
+
     }
 }
